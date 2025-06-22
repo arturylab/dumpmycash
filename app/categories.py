@@ -463,6 +463,54 @@ def api_category_stats():
             'error': str(e)
         }), 500
 
+@category_bp.route('/api/categories/top-expenses', methods=['GET'])
+@api_login_required
+def api_top_expense_categories():
+    """API endpoint to get top 10 expense categories for current month"""
+    try:
+        # Get current month date range
+        now = datetime.now()
+        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if now.month == 12:
+            end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
+        else:
+            end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
+        
+        # Query top expense categories by amount for current month
+        top_categories = db.session.query(
+            Category.name,
+            Category.unicode_emoji,
+            func.sum(Transaction.amount).label('total_amount')
+        ).join(Transaction).filter(
+            Category.user_id == g.user.id,
+            Category.type == 'expense',
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        ).group_by(Category.id, Category.name, Category.unicode_emoji).order_by(
+            func.sum(Transaction.amount).desc()
+        ).limit(10).all()
+        
+        # Format the results
+        categories_data = []
+        for category in top_categories:
+            categories_data.append({
+                'name': category.name,
+                'emoji': category.unicode_emoji or '💸',
+                'amount': float(category.total_amount)
+            })
+        
+        return jsonify({
+            'success': True,
+            'categories': categories_data,
+            'month': now.strftime('%B %Y')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # Endpoint de prueba sin CSRF
 @category_bp.route('/api/test-categories', methods=['POST'])
 @api_login_required

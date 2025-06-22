@@ -1,144 +1,186 @@
 {% extends "base.html" %}
 
-{% block title %}Categories - DumpMyMoney{% endblock %}
-
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/categories.js') }}"></script>
-{% endblock %}
+{% block title %}Categories - DumpMyCash{% endblock %}
 
 {% block content %}
-<div class="row">
-  <div class="col-12">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <div class="btn-toolbar" role="toolbar">
-        <div class="btn-group" role="group">
-          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-            Add Category
-          </button>
-          <div class="btn-group" role="group">
-            <button type="button" class="btn btn-outline-primary dropdown-toggle" id="timeFilterBtn" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="fas fa-calendar-alt me-1"></i><span id="currentFilter">{{ filter_display_name }}</span>
+<div class="container-fluid">
+  <!-- Quick Actions Header -->
+  <div class="row g-4 mb-4">
+    <div class="col-12">
+      <div class="card minimal-card">
+        <div class="card-body text-center">
+          <h5 class="card-title text-muted mb-3">Quick Actions</h5>
+          <div class="d-flex justify-content-center gap-3 flex-wrap">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+              <i class="fas fa-plus me-2"></i>Add Category
             </button>
-            <ul class="dropdown-menu" id="timeFilterDropdown">
-              <li><a class="dropdown-item{% if current_filter == 'today' %} active{% endif %}" href="#" data-filter="today">Today</a></li>
-              <li><a class="dropdown-item{% if current_filter == 'week' %} active{% endif %}" href="#" data-filter="week">This Week</a></li>
-              <li><a class="dropdown-item{% if current_filter == 'month' %} active{% endif %}" href="#" data-filter="month">This Month</a></li>
-              <li><a class="dropdown-item{% if current_filter == 'quarter' %} active{% endif %}" href="#" data-filter="quarter">This Quarter</a></li>
-              <li><a class="dropdown-item{% if current_filter == 'year' %} active{% endif %}" href="#" data-filter="year">This Year</a></li>
-              <li><hr class="dropdown-divider"></li>
-              <li><a class="dropdown-item{% if current_filter == 'all' %} active{% endif %}" href="#" data-filter="all">All Time</a></li>
-            </ul>
+            <div class="btn-group" role="group">
+              <button type="button" class="btn btn-outline-primary dropdown-toggle" id="timeFilterBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-calendar-alt me-1"></i><span id="currentFilter">{{ filter_display_name }}</span>
+              </button>
+              <ul class="dropdown-menu" id="timeFilterDropdown">
+                <li><a class="dropdown-item{% if current_filter == 'today' %} active{% endif %}" href="#" data-filter="today">Today</a></li>
+                <li><a class="dropdown-item{% if current_filter == 'week' %} active{% endif %}" href="#" data-filter="week">This Week</a></li>
+                <li><a class="dropdown-item{% if current_filter == 'month' %} active{% endif %}" href="#" data-filter="month">This Month</a></li>
+                <li><a class="dropdown-item{% if current_filter == 'quarter' %} active{% endif %}" href="#" data-filter="quarter">This Quarter</a></li>
+                <li><a class="dropdown-item{% if current_filter == 'year' %} active{% endif %}" href="#" data-filter="year">This Year</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item{% if current_filter == 'all' %} active{% endif %}" href="#" data-filter="all">All Time</a></li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="row">
-  <div class="col-12 mb-4">
-    <div class="card">
-      <div class="card-header">
-        <h5 class="card-title mb-0">Category Statistics</h5>
-      </div>
-      <div class="card-body">
-        <div class="row text-center">
-          <div class="col-md-3">
-            <h4 class="text-primary">{{ total_income_categories }}</h4>
-            <p class="text-muted mb-0">Income Categories</p>
-          </div>
-          <div class="col-md-3">
-            <h4 class="text-warning">{{ total_expense_categories }}</h4>
-            <p class="text-muted mb-0">Expense Categories</p>
-          </div>
-          <div class="col-md-3">
-            <h4 class="text-success">${{ "{:,.2f}".format(total_income) }}</h4>
-            <p class="text-muted mb-0">Total Income</p>
-          </div>
-          <div class="col-md-3">
-            <h4 class="text-danger">${{ "{:,.2f}".format(total_expenses) }}</h4>
-            <p class="text-muted mb-0">Total Expenses</p>
+  <!-- Category Statistics -->
+  <div class="row g-4 mb-4">
+    <div class="col-12">
+      <div class="card minimal-card">
+        <div class="card-body">
+          <h5 class="card-title text-center mb-4 text-muted">Category Overview</h5>
+          <div class="stats-grid">
+            <div class="text-center">
+              <h4 class="text-success">{{ total_income_categories }}</h4>
+              <p class="text-muted mb-0">Income Categories</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-danger">{{ total_expense_categories }}</h4>
+              <p class="text-muted mb-0">Expense Categories</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-success">${{ "{:,.2f}".format(total_income) }}</h4>
+              <p class="text-muted mb-0">Total Income</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-danger">${{ "{:,.2f}".format(total_expenses) }}</h4>
+              <p class="text-muted mb-0">Total Expenses</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="row">
-  <div class="col-md-6 mb-4">
-    <div class="card">
-      <div class="card-header">
-        <h5 class="card-title mb-0">Categories for <span class="badge text-bg-success">Incomes</span></h5>
+  <!-- Categories and Chart Section -->
+  <div class="row g-4">
+    <!-- Top Expense Categories Chart -->
+    <div class="col-lg-4">
+      <div class="card minimal-card h-100">
+        <div class="card-body">
+          <h5 class="card-title text-center mb-4 text-muted">Top Expense Categories</h5>
+          <p class="text-center text-muted small mb-3" id="chart-subtitle">Current Month</p>
+          <div class="chart-container">
+            <canvas id="top-expenses-chart"></canvas>
+          </div>
+          <div id="chart-loading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2 mb-0">Loading chart data...</p>
+          </div>
+          <div id="chart-empty" class="text-center py-4 text-muted d-none">
+            <i class="fas fa-chart-bar fa-3x mb-3"></i>
+            <h6>No expense data</h6>
+            <small>Add some expenses to see the chart</small>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <div class="list-group list-group-flush">
-          {% for category in income_categories %}
-          <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              <div class="d-flex align-items-center">
-                <span class="me-2" style="font-size: 1.5rem;">{{ category.unicode_emoji or '💰' }}</span>
-                <strong>{{ category.name }}</strong>
+    </div>    
+
+    <!-- Income Categories -->
+    <div class="col-lg-4">
+      <div class="card minimal-card h-100">
+        <div class="card-body">
+          <h5 class="card-title text-center mb-4 text-muted">
+            <span class="badge bg-success me-2">Income</span>Categories
+          </h5>
+          {% if income_categories %}
+            <div class="row g-3">
+              {% for category in income_categories %}
+              <div class="col-12">
+                <div class="card border-0 bg-light">
+                  <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="d-flex align-items-center">
+                        <span class="me-2" style="font-size: 1.2rem;">{{ category.unicode_emoji or '💰' }}</span>
+                        <div>
+                          <h6 class="mb-0">{{ category.name }}</h6>
+                          <small class="text-success">${{ "{:,.2f}".format(category.total) }}</small>
+                        </div>
+                      </div>
+                      <button class="btn btn-sm btn-outline-secondary" 
+                              data-action="edit" 
+                              data-category-id="{{ category.id }}" 
+                              data-category-name="{{ category.name }}" 
+                              data-category-type="{{ category.type }}" 
+                              data-category-emoji="{{ category.unicode_emoji or '💰' }}"
+                              data-bs-toggle="modal" 
+                              data-bs-target="#editCategoryModal">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <!-- <small class="text-muted">Income category</small> -->
+              {% endfor %}
             </div>
-            <div>
-              <span class="text-success">${{ "{:,.2f}".format(category.total) }}</span>
-              <button class="btn btn-sm btn-outline-secondary ms-2" 
-                      data-action="edit" 
-                      data-category-id="{{ category.id }}" 
-                      data-category-name="{{ category.name }}" 
-                      data-category-type="{{ category.type }}" 
-                      data-category-emoji="{{ category.unicode_emoji or '�' }}"
-                      data-bs-toggle="modal" 
-                      data-bs-target="#editCategoryModal">Edit</button>
-            </div>
-          </div>
           {% else %}
-          <div class="list-group-item text-center py-4 text-muted">
-            <p class="mb-0">No income categories yet</p>
-            <small>Use "Add Category" to create your first one</small>
-          </div>
-          {% endfor %}
+            <div class="text-center py-4 text-muted">
+              <i class="fas fa-plus-circle fa-3x mb-3"></i>
+              <h6>No income categories yet</h6>
+              <small>Use "Add Category" to create your first one</small>
+            </div>
+          {% endif %}
         </div>
       </div>
     </div>
-  </div>
-  
-  <div class="col-md-6 mb-4">
-    <div class="card">
-      <div class="card-header">
-        <h5 class="card-title mb-0">Categories for <span class="badge text-bg-danger">Expenses</span></h5>
-      </div>
-      <div class="card-body">
-        <div class="list-group list-group-flush">
-          {% for category in expense_categories %}
-          <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              <div class="d-flex align-items-center">
-                <span class="me-2" style="font-size: 1.5rem;">{{ category.unicode_emoji or '💸' }}</span>
-                <strong>{{ category.name }}</strong>
+
+    <!-- Expense Categories -->
+    <div class="col-lg-4">
+      <div class="card minimal-card h-100">
+        <div class="card-body">
+          <h5 class="card-title text-center mb-4 text-muted">
+            <span class="badge bg-danger me-2">Expense</span>Categories
+          </h5>
+          {% if expense_categories %}
+            <div class="row g-3">
+              {% for category in expense_categories %}
+              <div class="col-12">
+                <div class="card border-0 bg-light">
+                  <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="d-flex align-items-center">
+                        <span class="me-2" style="font-size: 1.2rem;">{{ category.unicode_emoji or '💸' }}</span>
+                        <div>
+                          <h6 class="mb-0">{{ category.name }}</h6>
+                          <small class="text-danger">${{ "{:,.2f}".format(category.total) }}</small>
+                        </div>
+                      </div>
+                      <button class="btn btn-sm btn-outline-secondary" 
+                              data-action="edit" 
+                              data-category-id="{{ category.id }}" 
+                              data-category-name="{{ category.name }}" 
+                              data-category-type="{{ category.type }}" 
+                              data-category-emoji="{{ category.unicode_emoji or '💸' }}"
+                              data-bs-toggle="modal" 
+                              data-bs-target="#editCategoryModal">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <!-- <small class="text-muted">Expense category</small> -->
+              {% endfor %}
             </div>
-            <div>
-              <span class="text-danger">${{ "{:,.2f}".format(category.total) }}</span>
-              <button class="btn btn-sm btn-outline-secondary ms-2" 
-                      data-action="edit" 
-                      data-category-id="{{ category.id }}" 
-                      data-category-name="{{ category.name }}" 
-                      data-category-type="{{ category.type }}" 
-                      data-category-emoji="{{ category.unicode_emoji or '💸' }}"
-                      data-bs-toggle="modal" 
-                      data-bs-target="#editCategoryModal">Edit</button>
-            </div>
-          </div>
           {% else %}
-          <div class="list-group-item text-center py-4 text-muted">
-            <p class="mb-0">No expense categories yet</p>
-            <small>Use "Add Category" to create your first one</small>
-          </div>
-          {% endfor %}
+            <div class="text-center py-4 text-muted">
+              <i class="fas fa-plus-circle fa-3x mb-3"></i>
+              <h6>No expense categories yet</h6>
+              <small>Use "Add Category" to create your first one</small>
+            </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -290,4 +332,9 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/categories.js') }}"></script>
 {% endblock %}

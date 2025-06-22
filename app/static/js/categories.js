@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Current category ID for editing/deleting
     let currentCategoryId = null;
     
+    // Chart instance
+    let topExpensesChart = null;
+    
     // Emoji categories for picker
     const emojiCategories = {
         finance: ['💰', '💸', '💳', '💵', '💶', '💷', '💎', '🏦', '🏧', '💹', '💱', '💲'],
@@ -263,7 +266,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 showAlert('Category created successfully!', 'success');
                 bootstrap.Modal.getInstance(addCategoryModal).hide();
                 addCategoryForm.reset();
-                location.reload(); // Reload to show new category
+                // Refresh chart and reload page
+                initializeTopExpensesChart();
+                setTimeout(() => location.reload(), 1000);
             } else {
                 showAlert(data.error || 'Error creating category', 'danger');
             }
@@ -314,7 +319,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 showAlert('Category updated successfully!', 'success');
                 bootstrap.Modal.getInstance(editCategoryModal).hide();
-                location.reload(); // Reload to show updated category
+                // Refresh chart and reload page
+                initializeTopExpensesChart();
+                setTimeout(() => location.reload(), 1000);
             } else {
                 showAlert(data.error || 'Error updating category', 'danger');
             }
@@ -356,7 +363,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 showAlert('Category deleted successfully!', 'success');
                 bootstrap.Modal.getInstance(deleteCategoryModal).hide();
-                location.reload(); // Reload to remove deleted category
+                // Refresh chart and reload page
+                initializeTopExpensesChart();
+                setTimeout(() => location.reload(), 1000);
             } else {
                 showAlert(data.error || 'Error deleting category', 'danger');
             }
@@ -381,4 +390,141 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset emoji placeholder
         document.getElementById('addCategoryEmoji').placeholder = '💵';
     });
+    
+    // Initialize Top Expenses Chart
+    function initializeTopExpensesChart() {
+        const canvas = document.getElementById('top-expenses-chart');
+        const loadingDiv = document.getElementById('chart-loading');
+        const emptyDiv = document.getElementById('chart-empty');
+        
+        if (!canvas) {
+            console.warn('Top expenses chart canvas not found');
+            return;
+        }
+        
+        // Show loading state
+        loadingDiv.style.display = 'block';
+        emptyDiv.classList.add('d-none');
+        canvas.style.display = 'none';
+        
+        // Fetch top expense categories data
+        fetch('/categories/api/categories/top-expenses')
+            .then(response => response.json())
+            .then(data => {
+                loadingDiv.style.display = 'none';
+                
+                if (data.success && data.categories && data.categories.length > 0) {
+                    // Update subtitle with current month
+                    const subtitle = document.getElementById('chart-subtitle');
+                    if (subtitle) {
+                        subtitle.textContent = data.month || 'Current Month';
+                    }
+                    
+                    // Show canvas and hide empty state
+                    canvas.style.display = 'block';
+                    emptyDiv.classList.add('d-none');
+                    
+                    // Prepare chart data
+                    const labels = data.categories.map(cat => cat.emoji + ' ' + cat.name);
+                    const amounts = data.categories.map(cat => cat.amount);
+                    
+                    // Generate colors for bars
+                    const colors = [
+                        '#dc3545', '#fd7e14', '#ffc107', '#20c997', '#0dcaf0',
+                        '#6f42c1', '#d63384', '#495057', '#198754', '#0d6efd'
+                    ];
+                    
+                    const chartData = {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Amount ($)',
+                            data: amounts,
+                            backgroundColor: colors.slice(0, amounts.length),
+                            borderColor: colors.slice(0, amounts.length),
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            borderSkipped: false,
+                        }]
+                    };
+                    
+                    const config = {
+                        type: 'bar',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return '$' + context.parsed.y.toLocaleString('en-US', {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2
+                                            });
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return '$' + value.toLocaleString('en-US', {
+                                                minimumFractionDigits: 0,
+                                                maximumFractionDigits: 0
+                                            });
+                                        }
+                                    },
+                                    grid: {
+                                        color: 'rgba(0,0,0,0.1)'
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        font: {
+                                            size: 10
+                                        }
+                                    },
+                                    grid: {
+                                        display: false
+                                    }
+                                }
+                            },
+                            layout: {
+                                padding: {
+                                    top: 10,
+                                    bottom: 10
+                                }
+                            }
+                        }
+                    };
+                    
+                    // Create or update chart
+                    if (topExpensesChart) {
+                        topExpensesChart.destroy();
+                    }
+                    
+                    topExpensesChart = new Chart(canvas, config);
+                } else {
+                    // Show empty state
+                    canvas.style.display = 'none';
+                    emptyDiv.classList.remove('d-none');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching top expense categories:', error);
+                loadingDiv.style.display = 'none';
+                canvas.style.display = 'none';
+                emptyDiv.classList.remove('d-none');
+            });
+    }
+    
+    // Initialize chart on page load
+    initializeTopExpensesChart();
 });
