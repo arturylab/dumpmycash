@@ -242,3 +242,27 @@ footer {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1rem;
 }
+
+/* Fixed position alerts/notifications */
+.alert.position-fixed {
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: none;
+    border-radius: 8px;
+}
+
+/* For mobile devices, center the alerts */
+@media (max-width: 768px) {
+    .alert.position-fixed {
+        top: 20px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        min-width: 280px;
+        max-width: 90vw;
+    }
+}

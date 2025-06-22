@@ -142,21 +142,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showAlert(message, type = 'success') {
-        // Create alert element
+        // Create alert element with fixed positioning
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        
         alertDiv.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
         
-        // Insert at the top of the main content
-        const container = document.querySelector('.container-fluid');
-        container.insertBefore(alertDiv, container.firstChild);
+        // Add to body instead of container to avoid layout shifts
+        document.body.appendChild(alertDiv);
         
         // Auto-dismiss after 5 seconds
         setTimeout(() => {
-            alertDiv.remove();
+            if (alertDiv && alertDiv.parentNode) {
+                alertDiv.remove();
+            }
         }, 5000);
     }
     
