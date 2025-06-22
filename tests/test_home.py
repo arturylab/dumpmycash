@@ -24,7 +24,7 @@ class TestHomeDashboard:
         
         response = client.get('/home/')
         assert response.status_code == 200
-        assert b'Welcome to Your Dashboard' in response.data
+        assert b'Total Balance' in response.data
     
     def test_dashboard_empty_state(self, client, auth_client):
         """Test dashboard shows empty state when no transactions."""
@@ -33,24 +33,25 @@ class TestHomeDashboard:
         
         response = client.get('/home/')
         assert response.status_code == 200
-        assert b'No transactions yet' in response.data
         assert b'$0.00' in response.data  # Total balance should be 0
+        assert b'Financial Overview' in response.data
     
     def test_dashboard_with_transactions(self, client, auth_client, db):
-        """Test dashboard displays transactions and statistics."""
+        """Test dashboard shows correct structure and calculates balance properly."""
         user = auth_client.create_user()
         auth_client.login()
         
-        # Create a category
+        # Create a category (this is expense category, so both transactions will be expenses)
         category = Category(name="Food", type="expense", user_id=user.id)
         db.session.add(category)
         db.session.commit()
-         # Create an account
+        
+        # Create an account
         account = Account(name="Test Account", user_id=user.id, balance=1000.0)
         db.session.add(account)
         db.session.commit()
 
-        # Create some transactions
+        # Create some transactions (both are expenses since category is expense type)
         transactions = [
             Transaction(
                 amount=100.00,
@@ -76,9 +77,14 @@ class TestHomeDashboard:
         
         response = client.get('/home/')
         assert response.status_code == 200
-        assert b'Salary' in response.data
-        assert b'Groceries' in response.data
-        assert b'$50.00' in response.data  # Net balance (100 - 50)
+        # Check for dashboard structure elements instead of transaction details
+        assert b'Total Balance' in response.data
+        assert b'Financial Overview' in response.data
+        assert b'Quick Actions' in response.data
+        assert b'Category Breakdown' in response.data
+        assert b'Weekly Expenses' in response.data
+        # Since both transactions are expenses, balance should be -$150.00
+        assert b'-$150.00' in response.data  # Total balance (0 - 100 - 50)
     
     def test_api_stats_requires_login(self, client):
         """Test that API stats endpoint requires login."""
@@ -529,3 +535,73 @@ class TestHomeDashboard:
             assert day_2_data['income'] == 200.0
             assert day_2_data['expenses'] == 0.0
             assert day_2_data['net'] == 200.0
+    
+    def test_api_weekly_expenses(self, client, auth_client, db):
+        """Test API weekly expenses endpoint."""
+        user = auth_client.create_user()
+        auth_client.login()
+        
+        # Create expense category
+        expense_category = Category(name="Expenses", type="expense", user_id=user.id)
+        db.session.add(expense_category)
+        db.session.commit()
+        
+        # Create an account
+        account = Account(name="Test Account", user_id=user.id, balance=1000.0)
+        db.session.add(account)
+        db.session.commit()
+        
+        # Create transactions for different days of current week
+        now = datetime.now()
+        start_of_week = now - timedelta(days=now.weekday())
+        
+        transactions = []
+        # Add expenses for Monday (day 0) and Wednesday (day 2)
+        for day_offset, amount in [(0, 100.0), (2, 150.0)]:
+            transaction_date = start_of_week + timedelta(days=day_offset)
+            transaction = Transaction(
+                amount=amount,
+                description=f"Expense Day {day_offset}",
+                date=transaction_date,
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            )
+            transactions.append(transaction)
+        
+        db.session.add_all(transactions)
+        db.session.commit()
+        
+        response = client.get('/home/api/weekly-expenses')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data['status'] == 'success'
+        
+        weekly_data = data['data']
+        assert len(weekly_data) == 7  # Should have 7 days (Monday to Sunday)
+        
+        # Check data structure
+        first_day = weekly_data[0]
+        required_fields = ['day', 'day_name', 'expenses']
+        for field in required_fields:
+            assert field in first_day
+        
+        # Check day names are correct
+        expected_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        actual_days = [day['day_name'] for day in weekly_data]
+        assert actual_days == expected_days
+        
+        # Check Monday has 100.0 expenses
+        monday_data = weekly_data[0]
+        assert monday_data['day_name'] == 'Mon'
+        assert monday_data['expenses'] == 100.0
+        
+        # Check Wednesday has 150.0 expenses
+        wednesday_data = weekly_data[2]
+        assert wednesday_data['day_name'] == 'Wed'
+        assert wednesday_data['expenses'] == 150.0
+        
+        # Check other days have 0.0 expenses
+        for i in [1, 3, 4, 5, 6]:  # Tue, Thu, Fri, Sat, Sun
+            assert weekly_data[i]['expenses'] == 0.0

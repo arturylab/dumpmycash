@@ -1,6 +1,7 @@
 html, body {
     height: 100%;
     margin: 0;
+    background-color: #f7f9fc;
 }
 
 #main-container {
@@ -212,4 +213,32 @@ footer {
     .nav-bottom {
         display: none;
     }
+}
+
+/* Dashboard Styles */
+.stats-card {
+    transition: none; /* Removed transform animation */
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.minimal-card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 12px;
+}
+
+.chart-container {
+    position: relative;
+    height: 250px;
+}
+
+.period-stats {
+    background: #ffffff; /* Changed to white background */
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
 }

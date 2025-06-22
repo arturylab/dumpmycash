@@ -76,13 +76,47 @@
         {% if g.user %}
         <nav class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm" style="z-index: 1030; background: white;">
           <div class="container-fluid">
+            <!-- Page Title on the left -->
+            <div class="d-flex align-items-center">
+              <h1 class="h4 mb-0 text-muted">
+                {% if request.endpoint %}
+                  {% if 'home' in request.endpoint %}
+                    <i class="fas fa-home"></i>
+                    Dashboard
+                  {% elif 'account' in request.endpoint %}
+                  <i class="fas fa-wallet"></i>
+                    Account
+                  {% elif 'transactions' in request.endpoint %}
+                  <i class="fas fa-exchange-alt"></i>
+                    Transactions
+                  {% elif 'categories' in request.endpoint %}
+                  <i class="fas fa-tags"></i>
+                    Categories
+                  {% elif 'profile' in request.endpoint %}
+                  <i class="fas fa-user-circle me-2"></i>
+                    Profile
+                  {% elif 'settings' in request.endpoint %}
+                  <i class="fas fa-cog me-2"></i>
+                    Settings
+                  {% else %}
+                    {{ request.endpoint.split('.')[-1].title() }}
+                  {% endif %}
+                {% else %}
+                  Dashboard
+                {% endif %}
+              </h1>
+            </div>
+            
+            <!-- User info and dropdown on the right -->
             <div class="d-flex align-items-center ms-auto">
               <span class="navbar-text me-3">
                 Welcome, {{ g.user.username }}!
               </span>
               <div class="dropdown">
-                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                  <i class="fas fa-user me-1"></i>Account
+                <button class="btn btn-sm d-flex align-items-center justify-content-center" 
+                        type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                        style="width: 40px; height: 40px; border-radius: 50%; background-color: #ffc108; border: none; color: #000;">
+                  <i class="fas fa-user" style="font-size: 1.2em;"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                   <li><a class="dropdown-item" href="{{ url_for('dashboard.profile') }}"><i class="fas fa-user-circle me-2"></i>Profile</a></li>

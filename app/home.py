@@ -6,6 +6,7 @@ Provides overview statistics, recent transactions, and quick actions.
 from flask import Blueprint, render_template, jsonify, request, current_app, g
 from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
+import calendar
 from app.models import Transaction, Category, db
 from app.auth import login_required
 from app.utils import format_currency
@@ -17,7 +18,7 @@ home = Blueprint('home', __name__, url_prefix='/home')
 @home.route('/')
 @login_required
 def dashboard():
-    """Main dashboard view with overview statistics and recent transactions."""
+    """Main dashboard view with overview statistics."""
     # Get current date information
     now = datetime.now()
     current_month_start = datetime(now.year, now.month, 1)
@@ -55,34 +56,13 @@ def dashboard():
             Transaction.date >= current_month_start
         )
     ).scalar()
-    
-    # Get recent transactions (last 10)
-    recent_transactions = Transaction.query.filter(
-        Transaction.user_id == g.user.id
-    ).order_by(Transaction.date.desc(), Transaction.id.desc()).limit(10).all()
-    
-    # Get top categories this month
-    top_categories = db.session.query(
-        Category.name,
-        Category.type,
-        func.sum(Transaction.amount).label('total')
-    ).join(Transaction).filter(
-        and_(
-            Transaction.user_id == g.user.id,
-            Transaction.date >= current_month_start
-        )
-    ).group_by(Category.id, Category.name, Category.type).order_by(
-        func.sum(Transaction.amount).desc()
-    ).limit(5).all()
-    
+
     return render_template('dashboard/home.html', 
                          title='Dashboard',
                          total_balance=total_balance,
                          month_income=month_income,
                          month_expenses=month_expenses,
                          month_net=month_income - month_expenses,
-                         recent_transactions=recent_transactions,
-                         top_categories=top_categories,
                          current_month=calendar.month_name[now.month])
 
 
@@ -158,7 +138,7 @@ def api_stats():
 @home.route('/api/recent-transactions')
 @login_required
 def api_recent_transactions():
-    """API endpoint for recent transactions."""
+    """API endpoint for recent transactions. (Currently not used in dashboard)"""
     try:
         limit = request.args.get('limit', 10, type=int)
         limit = min(limit, 50)  # Cap at 50 transactions
@@ -242,7 +222,7 @@ def api_category_breakdown():
 @home.route('/api/monthly-trend')
 @login_required
 def api_monthly_trend():
-    """API endpoint for monthly income/expense trend."""
+    """API endpoint for monthly income/expense trend. (Currently not used in dashboard)"""
     try:
         # Get last 12 months of data
         months = []
@@ -314,7 +294,7 @@ def api_monthly_trend():
 @home.route('/api/daily-activity')
 @login_required
 def api_daily_activity():
-    """API endpoint for daily activity chart data for the current month."""
+    """API endpoint for daily activity chart data for the current month. (Currently not used in dashboard)"""
     try:
         # Get current month
         now = datetime.now()
@@ -379,4 +359,52 @@ def api_daily_activity():
         return jsonify({
             'status': 'error',
             'message': 'Failed to fetch daily activity data'
+        }), 500
+
+
+@home.route('/api/weekly-expenses')
+@login_required
+def api_weekly_expenses():
+    """API endpoint for weekly expenses breakdown."""
+    try:
+        # Get current week (Monday to Sunday)
+        now = datetime.now()
+        # Get the start of the week (Monday)
+        start_of_week = now - timedelta(days=now.weekday())
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        weekly_data = []
+        
+        for i in range(7):  # Monday to Sunday
+            day_date = start_of_week + timedelta(days=i)
+            day_end = day_date.replace(hour=23, minute=59, second=59)
+            
+            # Get expenses for this day
+            daily_expenses = db.session.query(
+                func.coalesce(func.sum(Transaction.amount), 0)
+            ).filter(
+                and_(
+                    Transaction.user_id == g.user.id,
+                    Transaction.category.has(Category.type == 'expense'),
+                    Transaction.date >= day_date,
+                    Transaction.date <= day_end
+                )
+            ).scalar()
+            
+            weekly_data.append({
+                'day': day_date.strftime('%Y-%m-%d'),
+                'day_name': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
+                'expenses': float(daily_expenses)
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'data': weekly_data
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching weekly expenses: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch weekly expenses data'
         }), 500

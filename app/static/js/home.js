@@ -17,9 +17,12 @@ function initializeDashboard() {
     // Initialize charts if available
     initializeCharts();
     
-    // Set up auto-refresh for recent transactions and statistics
-    setInterval(refreshRecentTransactions, 30000); // Refresh every 30 seconds
-    setInterval(refreshStatistics, 60000); // Refresh statistics every minute
+    // Load period statistics
+    loadWeeklyStats();
+    loadDailyStats();
+    
+    // Set up auto-refresh for statistics
+    setInterval(refreshAllStats, 60000); // Refresh every minute
 }
 
 /**
@@ -31,14 +34,6 @@ function initializeQuickActions() {
     addTransactionBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             window.location.href = '/transactions/new';
-        });
-    });
-    
-    // View All Transactions button
-    const viewTransactionsBtns = document.querySelectorAll('[data-action="view-transactions"]');
-    viewTransactionsBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            window.location.href = '/transactions';
         });
     });
     
@@ -109,59 +104,6 @@ async function refreshStatistics() {
 }
 
 /**
- * Refresh recent transactions
- */
-async function refreshRecentTransactions() {
-    try {
-        const response = await fetch('/home/api/recent-transactions?limit=10');
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            updateRecentTransactionsList(data.data);
-        }
-    } catch (error) {
-        console.error('Error refreshing recent transactions:', error);
-    }
-}
-
-/**
- * Update recent transactions list
- */
-function updateRecentTransactionsList(transactions) {
-    const container = document.querySelector('#recent-transactions-list');
-    if (!container) return;
-    
-    if (transactions.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
-                <p class="text-muted">No transactions yet. Start by adding your first transaction!</p>
-                <button type="button" class="btn btn-primary" data-action="add-transaction">Add First Transaction</button>
-            </div>
-        `;
-        // Re-initialize quick actions for the new button
-        initializeQuickActions();
-        return;
-    }
-    
-    const transactionItems = transactions.map(transaction => `
-        <div class="transaction-item d-flex justify-content-between align-items-center py-2 border-bottom">
-            <div class="transaction-info">
-                <div class="fw-semibold">${escapeHtml(transaction.description)}</div>
-                <small class="text-muted">${transaction.category} • ${transaction.formatted_date}</small>
-            </div>
-            <div class="transaction-amount">
-                <span class="fw-bold ${transaction.transaction_type === 'income' ? 'text-success' : 'text-danger'}">
-                    ${transaction.transaction_type === 'income' ? '+' : '-'}${transaction.formatted_amount}
-                </span>
-            </div>
-        </div>
-    `).join('');
-    
-    container.innerHTML = transactionItems;
-}
-
-/**
  * Initialize charts if Chart.js is available
  */
 function initializeCharts() {
@@ -170,8 +112,8 @@ function initializeCharts() {
     // Initialize category breakdown chart
     initializeCategoryChart();
     
-    // Initialize monthly trend chart
-    initializeMonthlyTrendChart();
+    // Initialize weekly expenses chart
+    initializeWeeklyExpensesChart();
 }
 
 /**
@@ -196,14 +138,16 @@ async function initializeCategoryChart() {
                         backgroundColor: [
                             '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
                             '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
-                        ]
+                        ],
+                        borderWidth: 0
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            display: false
                         },
                         tooltip: {
                             callbacks: {
@@ -216,6 +160,9 @@ async function initializeCategoryChart() {
                     }
                 }
             });
+            
+            // Update category list with percentages
+            updateCategoryList(data.data.categories);
         }
     } catch (error) {
         console.error('Error initializing category chart:', error);
@@ -223,44 +170,59 @@ async function initializeCategoryChart() {
 }
 
 /**
- * Initialize monthly trend chart
+ * Update category list with percentages
  */
-async function initializeMonthlyTrendChart() {
-    const chartContainer = document.getElementById('monthly-trend-chart');
+function updateCategoryList(categories) {
+    const listContainer = document.getElementById('category-list');
+    if (!listContainer) return;
+    
+    const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+    
+    const listHTML = categories.slice(0, 5).map((category, index) => `
+        <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div class="d-flex align-items-center">
+                <div class="me-2" style="width: 12px; height: 12px; background-color: ${colors[index]}; border-radius: 50%;"></div>
+                <span class="small">${category.name}</span>
+            </div>
+            <div class="text-end">
+                <div class="fw-bold small">${category.formatted_amount}</div>
+                <div class="text-muted" style="font-size: 0.75rem;">${category.percentage}%</div>
+            </div>
+        </div>
+    `).join('');
+    
+    listContainer.innerHTML = listHTML;
+}
+
+/**
+ * Initialize weekly expenses chart
+ */
+async function initializeWeeklyExpensesChart() {
+    const chartContainer = document.getElementById('weekly-expenses-chart');
     if (!chartContainer) return;
     
     try {
-        const response = await fetch('/home/api/monthly-trend');
+        const response = await fetch('/home/api/weekly-expenses');
         const data = await response.json();
         
         if (data.status === 'success') {
             const ctx = chartContainer.getContext('2d');
             new Chart(ctx, {
-                type: 'line',
+                type: 'bar',
                 data: {
-                    labels: data.data.map(month => `${month.month.substring(0, 3)} ${month.year}`),
+                    labels: data.data.map(day => day.day_name),
                     datasets: [{
-                        label: 'Income',
-                        data: data.data.map(month => month.income),
-                        borderColor: '#28a745',
-                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                        tension: 0.4
-                    }, {
                         label: 'Expenses',
-                        data: data.data.map(month => month.expenses),
+                        data: data.data.map(day => day.expenses),
+                        backgroundColor: 'rgba(220, 53, 69, 0.8)',
                         borderColor: '#dc3545',
-                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                        tension: 0.4
-                    }, {
-                        label: 'Net',
-                        data: data.data.map(month => month.net),
-                        borderColor: '#007bff',
-                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                        tension: 0.4
+                        borderWidth: 1,
+                        borderRadius: 4
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -272,10 +234,13 @@ async function initializeMonthlyTrendChart() {
                         }
                     },
                     plugins: {
+                        legend: {
+                            display: false
+                        },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                    return `Expenses: ${formatCurrency(context.parsed.y)}`;
                                 }
                             }
                         }
@@ -284,8 +249,77 @@ async function initializeMonthlyTrendChart() {
             });
         }
     } catch (error) {
-        console.error('Error initializing monthly trend chart:', error);
+        console.error('Error initializing weekly expenses chart:', error);
     }
+}
+
+/**
+ * Load weekly statistics
+ */
+async function loadWeeklyStats() {
+    try {
+        const response = await fetch('/home/api/stats?days=7');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const weeklyNet = data.data.period_net;
+            const weeklyIncome = data.data.period_income;
+            const weeklyExpenses = data.data.period_expenses;
+            
+            document.getElementById('weekly-balance').textContent = formatCurrency(weeklyNet);
+            document.getElementById('weekly-breakdown').innerHTML = `
+                <span class="text-success">+${formatCurrency(weeklyIncome)}</span> | 
+                <span class="text-danger">-${formatCurrency(weeklyExpenses)}</span>
+            `;
+            
+            // Update color based on net value
+            const weeklyElement = document.getElementById('weekly-balance');
+            weeklyElement.className = weeklyNet >= 0 ? 'text-success' : 'text-danger';
+        }
+    } catch (error) {
+        console.error('Error loading weekly stats:', error);
+        document.getElementById('weekly-balance').textContent = '$0.00';
+    }
+}
+
+/**
+ * Load daily statistics
+ */
+async function loadDailyStats() {
+    try {
+        const response = await fetch('/home/api/stats?days=1');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const dailyNet = data.data.period_net;
+            const dailyIncome = data.data.period_income;
+            const dailyExpenses = data.data.period_expenses;
+            
+            document.getElementById('daily-balance').textContent = formatCurrency(dailyNet);
+            document.getElementById('daily-breakdown').innerHTML = `
+                <span class="text-success">+${formatCurrency(dailyIncome)}</span> | 
+                <span class="text-danger">-${formatCurrency(dailyExpenses)}</span>
+            `;
+            
+            // Update color based on net value
+            const dailyElement = document.getElementById('daily-balance');
+            dailyElement.className = dailyNet >= 0 ? 'text-success' : 'text-danger';
+        }
+    } catch (error) {
+        console.error('Error loading daily stats:', error);
+        document.getElementById('daily-balance').textContent = '$0.00';
+    }
+}
+
+/**
+ * Refresh all statistics
+ */
+async function refreshAllStats() {
+    await Promise.all([
+        refreshStatistics(),
+        loadWeeklyStats(),
+        loadDailyStats()
+    ]);
 }
 
 /**
