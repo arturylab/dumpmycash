@@ -1,13 +1,15 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Ensure flash messages are properly centered on account page
-    fixFlashMessagesCentering();
-    
     // Apply account colors from data attributes
     const accountTitles = document.querySelectorAll('.account-title[data-account-color]');
     accountTitles.forEach(title => {
         const color = title.getAttribute('data-account-color');
-        if (color) {
-            title.style.color = color;
+        if (color && color !== '#000000' && color !== '') {
+            // Apply custom color with high specificity
+            title.classList.remove('text-muted');
+            title.style.setProperty('color', color, 'important');
+        } else {
+            // Apply muted color if no custom color is set or if it's the default black
+            title.classList.add('text-muted');
         }
     });
     
@@ -186,33 +188,47 @@ function loadAccountChart() {
         .then(response => response.json())
         .then(data => {
             if (data.labels.length === 0) {
-                // Hide chart container if no data
-                document.getElementById('chartContainer').style.display = 'none';
+                // Show message when no data
+                document.getElementById('chartContainer').innerHTML = `
+                    <div class="card minimal-card h-100">
+                        <div class="card-body text-center py-5">
+                            <i class="fas fa-chart-pie fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No account data available</h5>
+                            <p class="text-muted">Add accounts to see the balance distribution.</p>
+                        </div>
+                    </div>
+                `;
+                // Clear account list
+                const accountList = document.getElementById('account-list');
+                if (accountList) {
+                    accountList.innerHTML = '';
+                }
                 return;
             }
             
             const ctx = chartCanvas.getContext('2d');
+            
             new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: data.labels,
                     datasets: [{
                         data: data.data,
-                        backgroundColor: data.backgroundColor.slice(0, data.labels.length),
-                        borderWidth: 2,
-                        borderColor: '#fff'
+                        backgroundColor: data.backgroundColor, // Use the actual account colors from API
+                        borderWidth: 0
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            display: false
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    const label = context.label || '';
+                                    const label = data.labels[context.dataIndex];
                                     const value = context.parsed;
                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                     const percentage = ((value / total) * 100).toFixed(1);
@@ -223,11 +239,45 @@ function loadAccountChart() {
                     }
                 }
             });
+            
+            // Update account list with percentages using real account colors
+            updateAccountList(data, data.backgroundColor);
         })
         .catch(error => {
             console.error('Error loading chart data:', error);
             document.getElementById('chartContainer').style.display = 'none';
         });
+}
+
+/**
+ * Update account list with percentages (similar to updateCategoryList in home.js)
+ */
+function updateAccountList(data, colors) {
+    const listContainer = document.getElementById('account-list');
+    if (!listContainer) return;
+    
+    // Calculate total and percentages
+    const total = data.data.reduce((a, b) => a + b, 0);
+    
+    const listHTML = data.labels.map((label, index) => {
+        const amount = data.data[index];
+        const percentage = ((amount / total) * 100).toFixed(1);
+        
+        return `
+            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <div class="d-flex align-items-center">
+                    <div class="me-2" style="width: 12px; height: 12px; background-color: ${colors[index]}; border-radius: 50%;"></div>
+                    <span class="small">${label}</span>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold small">${formatCurrency(amount)}</div>
+                    <div class="text-muted" style="font-size: 0.75rem;">${percentage}%</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    listContainer.innerHTML = listHTML;
 }
 
 function loadRecentTransfers() {
@@ -366,26 +416,37 @@ function handleTransferSubmit(event) {
 }
 
 function showAlert(message, type) {
-    // Create alert element
+    // Create alert element with the same styling as base.html
     const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show shadow-sm`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.style.minWidth = '300px';
     alertDiv.innerHTML = `
         ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     `;
     
-    // Insert at top of content
-    const mainContent = document.querySelector('.container-fluid');
-    if (mainContent) {
-        mainContent.insertBefore(alertDiv, mainContent.firstChild);
-        
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            if (alertDiv.parentNode) {
-                alertDiv.remove();
-            }
-        }, 5000);
+    // Find or create the flash message container like base.html
+    let flashContainer = document.querySelector('.position-fixed.top-0.start-50.translate-middle-x');
+    if (!flashContainer) {
+        // Create the container with the same style as base.html
+        flashContainer = document.createElement('div');
+        flashContainer.className = 'position-fixed top-0 start-50 translate-middle-x';
+        flashContainer.style.zIndex = '1055';
+        flashContainer.style.marginTop = '20px';
+        document.body.appendChild(flashContainer);
     }
+    
+    // Insert alert into the flash container
+    flashContainer.appendChild(alertDiv);
+    
+    // Auto-dismiss after 2.5 seconds (same as base.js)
+    setTimeout(() => {
+        if (alertDiv && alertDiv.classList.contains('show')) {
+            const bsAlert = new bootstrap.Alert(alertDiv);
+            bsAlert.close();
+        }
+    }, 2500);
 }
 
 function viewTransferDetails(transferId) {
@@ -884,53 +945,4 @@ function updateFromAccountOptions() {
     });
 }
 
-/**
- * Fixes flash messages centering on the account page
- * Ensures flash messages are properly positioned above all content
- */
-function fixFlashMessagesCentering() {
-    const flashContainer = document.querySelector('.position-fixed.top-0.start-50.translate-middle-x');
-    if (flashContainer) {
-        // Apply enhanced positioning
-        flashContainer.style.cssText = `
-            position: fixed !important;
-            top: 20px !important;
-            left: 50% !important;
-            transform: translateX(-50%) !important;
-            z-index: 1061 !important;
-            width: auto !important;
-            max-width: 90vw !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            gap: 10px !important;
-        `;
-        
-        // Ensure all alert elements within the container are properly styled
-        const alerts = flashContainer.querySelectorAll('.alert');
-        alerts.forEach(alert => {
-            alert.style.cssText = `
-                margin: 0 !important;
-                max-width: 500px !important;
-                min-width: 300px !important;
-                z-index: 1062 !important;
-                position: relative !important;
-            `;
-        });
-        
-        // Add a timeout to auto-hide flash messages after 5 seconds
-        setTimeout(() => {
-            alerts.forEach(alert => {
-                if (alert && alert.parentNode) {
-                    alert.style.transition = 'opacity 0.5s ease-out';
-                    alert.style.opacity = '0';
-                    setTimeout(() => {
-                        if (alert.parentNode) {
-                            alert.parentNode.removeChild(alert);
-                        }
-                    }, 500);
-                }
-            });
-        }, 5000);
-    }
-}
+// Flash message handling has been removed - base.html and base.js handle everything

@@ -14,7 +14,7 @@ account_bp = Blueprint('account', __name__, url_prefix='/account')
 @login_required
 def index():
     """Display all accounts for the current user."""
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
+    accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
     
     # Calculate summary statistics
     total_balance = sum(account.balance for account in accounts)
@@ -170,7 +170,7 @@ def delete(account_id):
 @login_required
 def api_accounts():
     """API endpoint to get all accounts as JSON."""
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
+    accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
     
     accounts_data = []
     for account in accounts:
@@ -325,7 +325,7 @@ def transfer():
 @login_required
 def api_chart_data():
     """API endpoint to get account balance data for pie chart."""
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
+    accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
     
     chart_data = {
         'labels': [],
