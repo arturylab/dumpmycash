@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - DumpMyCash{% endblock %}
+
+{% block extra_css %}
+<style>
+  .stats-card {
+    transition: transform 0.2s;
+  }
+  .stats-card:hover {
+    transform: translateY(-2px);
+  }
+  .transaction-item {
+    transition: background-color 0.2s;
+  }
+  .transaction-item:hover {
+    background-color: rgba(0,0,0,0.05);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="h2">Welcome to Your Dashboard</h1>
+      <div class="btn-toolbar" role="toolbar">
+        <div class="btn-group me-2" role="group">
+          <button type="button" class="btn btn-primary" data-action="add-transaction">Add Transaction</button>
+          <button type="button" class="btn btn-outline-primary" data-action="view-transactions">View All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card stats-card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Total Balance</h5>
+        <h2 class="{{ 'text-success' if total_balance >= 0 else 'text-danger' }}" data-stat="total-balance">
+          {{ total_balance|currency }}
+        </h2>
+        <p class="card-text">Current account balance</p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-4 mb-4">
+    <div class="card stats-card h-100">
+      <div class="card-body">
+        <h5 class="card-title">{{ current_month }}</h5>
+        <h3 class="{{ 'text-success' if month_net >= 0 else 'text-danger' }}" data-stat="monthly-net">
+          {{ month_net|currency }}
+        </h3>
+        <p class="card-text">
+          <small class="text-success">+{{ month_income|currency }}</small> | 
+          <small class="text-danger">-{{ month_expenses|currency }}</small>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Quick Actions</h5>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-1">
+          <button type="button" class="btn btn-outline-primary" data-action="add-transaction">
+            <i class="fas fa-plus me-2"></i>Add Transaction
+          </button>
+          <button type="button" class="btn btn-outline-success" data-action="add-account" data-auto-modal="true">
+            <i class="fas fa-wallet me-2"></i>Add Account
+          </button>
+          <button type="button" class="btn btn-outline-secondary" data-action="manage-categories">
+            <i class="fas fa-tags me-2"></i>Manage Categories
+          </button>
+          <button type="button" class="btn btn-outline-info" data-action="generate-report">
+            <i class="fas fa-chart-line me-2"></i>Generate Report
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Category Breakdown</h5>
+      </div>
+      <div class="card-body">
+        <canvas id="category-chart" height=""></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Monthly Trend</h5>
+      </div>
+      <div class="card-body">
+        <canvas id="monthly-trend-chart" height=""></canvas>
+      </div>
+    </div>
+  </div>
+
+  {% if top_categories %}
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Top Categories ({{ current_month }})</h5>
+      </div>
+      <div class="card-body">
+        {% for category in top_categories %}
+          <div class="d-flex justify-content-between align-items-center py-1">
+            <span class="text-truncate">{{ category.name }}</span>
+            <span class="fw-bold {{ 'text-success' if category.type == 'income' else 'text-danger' }}">{{ category.total|currency }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row">
+  <div class="col-lg-12 mb-4">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Recent Transactions</h5>
+      </div>
+      <div class="card-body">
+        <div id="recent-transactions-list">
+          {% if recent_transactions %}
+            {% for transaction in recent_transactions %}
+              <div class="transaction-item d-flex justify-content-between align-items-center py-2 border-bottom">
+                <div class="transaction-info">
+                  <div class="fw-semibold">{{ transaction.description }}</div>
+                  <small class="text-muted">
+                    {{ transaction.category.name if transaction.category else 'Uncategorized' }} • 
+                    {{ transaction.date.strftime('%Y-%m-%d') }}
+                  </small>
+                </div>
+                <div class="transaction-amount">
+                  <span class="fw-bold {{ 'text-success' if transaction.category.type == 'income' else 'text-danger' }}">
+                    {{ '+' if transaction.category.type == 'income' else '-' }}{{ transaction.amount|currency }}
+                  </span>
+                </div>
+              </div>
+            {% endfor %}
+            <div class="text-center mt-3">
+              <button type="button" class="btn btn-outline-primary" data-action="view-transactions">
+                View All Transactions
+              </button>
+            </div>
+          {% else %}
+            <div class="text-center py-4">
+              <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
+              <p class="text-muted">No transactions yet. Start by adding your first transaction!</p>
+              <button type="button" class="btn btn-primary" data-action="add-transaction">Add First Transaction</button>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+{% endblock %}

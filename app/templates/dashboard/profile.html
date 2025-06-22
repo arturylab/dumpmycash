@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - DumpMyMoney{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="h2">Profile</h1>
+      <button type="button" class="btn btn-primary">Edit Profile</button>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-body text-center">
+        <div class="mb-3">
+          <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+            <i class="fas fa-user fa-2x text-white"></i>
+          </div>
+        </div>
+        <h5 class="card-title">{{ g.user.username if g.user else 'Guest User' }}</h5>
+        <p class="card-text text-muted">{{ g.user.email if g.user else 'guest@example.com' }}</p>
+        <button type="button" class="btn btn-outline-primary btn-sm">Change Avatar</button>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title mb-0">Account Statistics</h6>
+      </div>
+      <div class="card-body">
+        <div class="row text-center">
+          <div class="col-6">
+            <h5 class="text-primary">0</h5>
+            <small class="text-muted">Transactions</small>
+          </div>
+          <div class="col-6">
+            <h5 class="text-success">0</h5>
+            <small class="text-muted">Categories</small>
+          </div>
+        </div>
+        <hr>
+        <div class="text-center">
+          <small class="text-muted">Member since</small>
+          <div class="fw-bold">{{ now().strftime('%B %Y') }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-8">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="card-title mb-0">Personal Information</h6>
+      </div>
+      <div class="card-body">
+        <form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label for="firstName" class="form-label">First Name</label>
+              <input type="text" class="form-control" id="firstName" value="">
+            </div>
+            <div class="col-md-6">
+              <label for="lastName" class="form-label">Last Name</label>
+              <input type="text" class="form-control" id="lastName" value="">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="email" class="form-label">Email Address</label>
+            <input type="email" class="form-control" id="email" value="{{ g.user.email if g.user else '' }}" readonly>
+            <div class="form-text">Contact support to change your email address.</div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="username" class="form-label">Username</label>
+            <input type="text" class="form-control" id="username" value="{{ g.user.username if g.user else '' }}" readonly>
+            <div class="form-text">Username cannot be changed.</div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="timezone" class="form-label">Timezone</label>
+            <select class="form-select" id="timezone">
+              <option>UTC-8 (Pacific Time)</option>
+              <option>UTC-7 (Mountain Time)</option>
+              <option>UTC-6 (Central Time)</option>
+              <option>UTC-5 (Eastern Time)</option>
+              <option>UTC+0 (GMT)</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <label for="currency" class="form-label">Default Currency</label>
+            <select class="form-select" id="currency">
+              <option>USD ($)</option>
+              <option>EUR (€)</option>
+              <option>GBP (£)</option>
+              <option>JPY (¥)</option>
+            </select>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">Update Profile</button>
+        </form>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title mb-0">Change Password</h6>
+      </div>
+      <div class="card-body">
+        <form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="mb-3">
+            <label for="currentPassword" class="form-label">Current Password</label>
+            <input type="password" class="form-control" id="currentPassword" required>
+          </div>
+          
+          <div class="mb-3">
+            <label for="newPassword" class="form-label">New Password</label>
+            <input type="password" class="form-control" id="newPassword" required>
+          </div>
+          
+          <div class="mb-3">
+            <label for="confirmPassword" class="form-label">Confirm New Password</label>
+            <input type="password" class="form-control" id="confirmPassword" required>
+          </div>
+          
+          <button type="submit" class="btn btn-warning">Change Password</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

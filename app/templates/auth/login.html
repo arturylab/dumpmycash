@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Login - DumpMyMoney{% endblock %}
+
+{% block main_class %}{% endblock %}
+
+{% block navigation %}
+<!-- No navigation for login page -->
+{% endblock %}
+
+{% block footer %}
+<!-- No footer for login page -->
+{% endblock %}
+
+{% block content %}
+<div class="row g-0" style="min-height: 100vh;" data-open-register-modal="{{ open_register_modal|default(false)|lower }}">
+        
+        <div id="login-container" class="col-md-6 d-flex justify-content-center align-items-center">
+          <div class="w-100" style="max-width: 400px;">
+            <form method="POST" action="{{ url_for('auth.login') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> 
+              <div class="mb-3">
+                <label for="InputEmail" class="form-label">Email address</label>
+                <input type="email" class="form-control" id="InputEmail" name="email" value="{{ input_email or '' }}" required>
+              </div>
+              <div class="mb-3">
+                <label for="InputPassword1" class="form-label">Password</label>
+                <input type="password" class="form-control" id="InputPassword1" name="password" required>
+              </div>
+              <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="loginCheck" name="remember">
+                <label class="form-check-label" for="loginCheck">Remember me</label>
+              </div>
+              <button type="submit" class="btn btn-dark w-100">Log in</button>
+            </form>
+            <div class="text-center mt-3">
+              <p class="mb-0">Don't have an account? <a href="#" data-bs-toggle="modal" data-bs-target="#registerModal" class="text-decoration-none">Sign up</a></p>
+            </div>
+          </div>
+        </div>
+
+        <div id="logo-container" class="col-md-6 d-flex flex-column justify-content-center align-items-center position-relative">
+          <div class="d-flex align-items-center mb-3">
+            <h1 class="display-3 me-3">Dump<span style="color:yellow">My</span>Cash</h1>
+            <img src="{{ url_for('static', filename='images/dollar128.png') }}" alt="Logo" class="img-fluid" style="width: 64px; height: 64px;">
+          </div>
+          <p class="text-center"><em>Personal Financial Management</em></p>
+          
+          <!-- Copyright in bottom left -->
+          <div class="position-absolute bottom-0 start-1 p-3">
+            <small class="text-light opacity-75">&copy; 2025 DumpMyMoney. All rights reserved.</small>
+          </div>
+        </div>
+      </div>
+
+    <!-- Register Modal -->
+    <div class="modal fade" id="registerModal" tabindex="-1" aria-labelledby="registerModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="registerModalLabel">Sign Up</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="registerForm" method="POST" action="{{ url_for('auth.register') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/> 
+              <div class="form-floating mb-2">
+                <input type="text" class="form-control" id="floatingUsername" name="username" placeholder="Username" value="{{ input_username or '' }}" required>
+                <label for="floatingUsername">Username</label>
+                <div id="usernameFeedback" class="form-text"></div>
+              </div>
+              <div class="form-floating mb-2">
+                <input type="email" class="form-control" id="floatingEmail" name="email" placeholder="name@example.com" value="{{ input_email or '' }}" required>
+                <label for="floatingEmail">Email address</label>
+                <div id="emailFeedback" class="form-text"></div>
+              </div>
+              <div class="form-floating mb-3">
+                <input type="password" class="form-control" id="floatingPasswordModal" name="password" placeholder="Password" required>
+                <label for="floatingPasswordModal">Password</label>
+                <div id="passwordFeedback" class="form-text"></div> <!-- For password strength, etc. -->
+              </div>
+              <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="showPasswordModalCheck">
+                <label class="form-check-label" for="showPasswordModalCheck">Show password</label>
+              </div>
+              <button type="submit" id="registerSubmitButton" class="btn btn-dark w-100">Register</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Pass backend variables to JavaScript
+  document.addEventListener('DOMContentLoaded', function() {
+    window.openRegisterModal = document.querySelector('[data-open-register-modal]').getAttribute('data-open-register-modal') === 'true';
+    window.csrfToken = "{{ csrf_token() }}";
+  });
+</script>
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+<script src="{{ url_for('static', filename='js/register.js') }}"></script>
+{% endblock %}
