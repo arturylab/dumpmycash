@@ -12,7 +12,7 @@
     {% block extra_css %}{% endblock %}
   </head>
   <body class="d-flex flex-column min-vh-100">
-    <!-- Flash Messages - Floating at top center -->
+    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="position-fixed top-0 start-50 translate-middle-x" style="z-index: 1055; margin-top: 20px;">
@@ -26,104 +26,118 @@
       {% endif %}
     {% endwith %}
 
-    <!-- Navigation Block -->
-    {% block navigation %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-      <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
-          <img src="{{ url_for('static', filename='images/dollar32.png') }}" alt="DumpMyMoney" width="24" height="24" class="d-inline-block align-text-top">
-          DumpMyMoney
-        </a>
-        
-        {% if g.user %}
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        
-        <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav me-auto">
-            <li class="nav-item">
-              <a class="nav-link{{ ' active' if request.endpoint and request.endpoint.startswith('home.') else '' }}" href="{{ url_for('dashboard.home') }}">Home</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link{{ ' active' if request.endpoint and request.endpoint.startswith('account.') else '' }}" href="{{ url_for('dashboard.account') }}">Account</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link{{ ' active' if request.endpoint and request.endpoint.startswith('transactions.') else '' }}" href="{{ url_for('dashboard.transactions') }}">Transactions</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link{{ ' active' if request.endpoint and request.endpoint.startswith('categories.') else '' }}" href="{{ url_for('dashboard.categories') }}">Categories</a>
-            </li>
-          </ul>
-          
-          <div class="d-flex align-items-center">
-            <span class="navbar-text me-3">
-              Welcome, {{ g.user.username }}!
-            </span>
-            
-            <!-- User dropdown menu -->
-            <div class="dropdown me-2">
-              <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-user me-1"></i>Account
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                <li><a class="dropdown-item" href="{{ url_for('dashboard.profile') }}">
-                  <i class="fas fa-user-circle me-2"></i>Profile
-                </a></li>
-                <li><a class="dropdown-item" href="{{ url_for('dashboard.settings') }}">
-                  <i class="fas fa-cog me-2"></i>Settings
-                </a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-danger" href="#" onclick="document.getElementById('logoutForm').submit(); return false;">
-                  <i class="fas fa-sign-out-alt me-2"></i>Logout
-                </a></li>
-              </ul>
-            </div>
-            
-            <form id="logoutForm" action="{{ url_for('auth.logout') }}" method="POST" class="d-none">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            </form>
-          </div>
+    <div class="page-wrapper">
+      <!-- Sidebar -->
+      {% block navigation %}
+      {% if g.user %}
+      <nav id="sidebar" class="bg-dark">
+        <div class="sidebar-header">
+          <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
+            <img src="{{ url_for('static', filename='images/dollar64.png') }}" alt="DumpMyMoney Logo" width="32" height="32">
+          </a>
         </div>
-        {% endif %}
-      </div>
-    </nav>
-    {% endblock %}
 
-    <!-- Main Content Container -->
-    <div class="container-fluid flex-grow-1 d-flex flex-column">
-      {% block header %}
-      <!-- Optional header section for page-specific headers -->
+        <ul class="list-unstyled components">
+          <li class="{{ 'active' if request.endpoint and 'home' in request.endpoint else '' }}">
+            <a href="{{ url_for('dashboard.home') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Home">
+              <i class="fas fa-home"></i>
+            </a>
+          </li>
+          <li class="{{ 'active' if request.endpoint and 'account' in request.endpoint else '' }}">
+            <a href="{{ url_for('dashboard.account') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Account">
+              <i class="fas fa-wallet"></i>
+            </a>
+          </li>
+          <li class="{{ 'active' if request.endpoint and 'transactions' in request.endpoint else '' }}">
+            <a href="{{ url_for('dashboard.transactions') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Transactions">
+              <i class="fas fa-exchange-alt"></i>
+            </a>
+          </li>
+          <li class="{{ 'active' if request.endpoint and 'categories' in request.endpoint else '' }}">
+            <a href="{{ url_for('dashboard.categories') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Categories">
+              <i class="fas fa-tags"></i>
+            </a>
+          </li>
+        </ul>
+
+        <ul class="list-unstyled CTAs">
+          <li>
+            <a href="#" class="logout" onclick="document.getElementById('logoutForm').submit(); return false;" data-bs-toggle="tooltip" data-bs-placement="right" title="Logout">
+              <i class="fas fa-sign-out-alt"></i>
+            </a>
+          </li>
+        </ul>
+      </nav>
+      {% endif %}
       {% endblock %}
 
-      <!-- Main Content -->
-      <main class="{% block main_class %}py-4{% endblock %} flex-grow-1">
-        {% block content %}
-        <!-- Main page content goes here -->
+      <!-- Page Content --> 
+      <div id="content">
+        {% if g.user %}
+        <nav class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm" style="z-index: 1030; background: white;">
+          <div class="container-fluid">
+            <div class="d-flex align-items-center ms-auto">
+              <span class="navbar-text me-3">
+                Welcome, {{ g.user.username }}!
+              </span>
+              <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                  <i class="fas fa-user me-1"></i>Account
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                  <li><a class="dropdown-item" href="{{ url_for('dashboard.profile') }}"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('dashboard.settings') }}"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item text-danger" href="#" onclick="document.getElementById('logoutForm').submit(); return false;">
+                    <i class="fas fa-sign-out-alt me-2"></i>Logout
+                  </a></li>
+                </ul>
+              </div>
+              <form id="logoutForm" action="{{ url_for('auth.logout') }}" method="POST" class="d-none">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              </form>
+            </div>
+          </div>
+        </nav>
+        {% endif %}
+
+        <main class="{% block main_class %}py-4 px-4{% endblock %} flex-grow-1">
+          {% block content %}{% endblock %}
+        </main>
+
+        {% block footer %}
+        <footer class="py-3">
+          <div class="container-fluid text-center">
+            <p class="mb-0" style="color:grey">&copy; 2025 DumpMyMoney. All rights reserved.</p>
+          </div>
+        </footer>
         {% endblock %}
-      </main>
+      </div>
     </div>
 
-    <!-- Footer Block -->
-    {% block footer %}
-    <footer class="bg-dark text-light py-3 mt-auto">
-      <div class="container-fluid">
-        <div class="row">
-          <div class="col-md-6">
-            <p class="mb-0">&copy; 2025 DumpMyMoney. All rights reserved.</p>
-          </div>
-          <div class="col-md-6 text-md-end">
-            <small>Managing your finances made simple</small>
-          </div>
-        </div>
-      </div>
-    </footer>
-    {% endblock %}
+    <!-- Bottom Nav for mobile -->
+    {% if g.user %}
+    <nav class="nav-bottom">
+        <a href="{{ url_for('dashboard.home') }}" class="nav-link {{ 'active' if request.endpoint and 'home' in request.endpoint else '' }}"><i class="fas fa-home"></i></a>
+        <a href="{{ url_for('dashboard.account') }}" class="nav-link {{ 'active' if request.endpoint and 'account' in request.endpoint else '' }}"><i class="fas fa-wallet"></i></a>
+        <a href="{{ url_for('dashboard.transactions') }}" class="nav-link {{ 'active' if request.endpoint and 'transactions' in request.endpoint else '' }}"><i class="fas fa-exchange-alt"></i></a>
+        <a href="{{ url_for('dashboard.categories') }}" class="nav-link {{ 'active' if request.endpoint and 'categories' in request.endpoint else '' }}"><i class="fas fa-tags"></i></a>
+        <a href="#" class="nav-link" onclick="document.getElementById('logoutForm').submit(); return false;"><i class="fas fa-sign-out-alt"></i></a>
+    </nav>
+    {% endif %}
 
     <!-- JavaScript Block -->
     {% block scripts %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js" integrity="sha384-j1CDi7MgGQ12Z7Qab0qlWQ/Qqz24Gc6BM0thvEMVjHnfYGF0rmFCozFSxQBxwHKO" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/base.js') }}"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function(event) {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+          return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+      });
+    </script>
     {% endblock %}
 
     <!-- Extra JavaScript for page-specific scripts -->
