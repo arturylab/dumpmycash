@@ -681,3 +681,566 @@ class TestTransactions:
             # Count how many times "Actions" appears in table headers specifically
             actions_in_headers = table_header_text.count('Actions')
             assert actions_in_headers == 0, f"Found 'Actions' {actions_in_headers} times in table headers"
+
+
+class TestDeleteTransactionModal:
+    """Test suite for transaction deletion modal functionality"""
+
+    @pytest.fixture
+    def user(self, db, auth_client):
+        """Create a test user"""
+        return auth_client.create_user()
+
+    @pytest.fixture
+    def account(self, db, user):
+        """Create a test account"""
+        account = Account(
+            name='Test Account',
+            user_id=user.id,
+            balance=1000.00
+        )
+        db.session.add(account)
+        db.session.commit()
+        return account
+
+    @pytest.fixture
+    def category_expense(self, db, user):
+        """Create a test expense category"""
+        category = Category(
+            name='Food',
+            type='expense',
+            unicode_emoji='🍕',
+            user_id=user.id
+        )
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @pytest.fixture
+    def transaction(self, db, user, account, category_expense):
+        """Create a test transaction"""
+        transaction = Transaction(
+            amount=50.00,
+            description='Test transaction for deletion',
+            date=datetime.now(),
+            user_id=user.id,
+            account_id=account.id,
+            category_id=category_expense.id
+        )
+        db.session.add(transaction)
+        db.session.commit()
+        return transaction
+
+    def test_delete_modal_present_in_template(self, client, auth_client, user, account, category_expense):
+        """Test that the delete confirmation modal is present in the template"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that delete confirmation modal is present
+        assert 'deleteTransactionModal' in html_content
+        assert 'Delete Transaction' in html_content
+        assert 'confirmDeleteTransaction' in html_content
+        assert 'deleteTransactionAmount' in html_content
+        assert 'deleteTransactionDescription' in html_content
+        assert 'deleteTransactionAccount' in html_content
+        assert 'deleteTransactionCategory' in html_content
+        assert 'deleteTransactionDate' in html_content
+
+    def test_delete_button_opens_modal_instead_of_direct_delete(self, client, auth_client, user, account, category_expense):
+        """Test that the delete button is present and JavaScript handles modal opening"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that delete button exists with correct ID
+        assert 'id="deleteTransactionBtn"' in html_content
+        assert 'btn btn-danger' in html_content
+        
+        # Check that JavaScript is loaded to handle the modal
+        assert 'transactions.js' in html_content
+        
+        # The delete button should not have an onclick with confirm() anymore
+        assert 'confirm(' not in html_content or html_content.count('confirm(') <= 1  # Allow for other confirms if any
+
+    def test_delete_transaction_via_api_works(self, client, auth_client, user, account, category_expense, transaction):
+        """Test that transaction deletion via API still works properly"""
+        auth_client.login()
+        initial_balance = account.balance
+        transaction_amount = transaction.amount
+        
+        response = client.delete(f'/transactions/api/transactions/{transaction.id}')
+        
+        assert response.status_code == 200
+        
+        # Check if transaction was deleted from database
+        deleted_transaction = Transaction.query.get(transaction.id)
+        assert deleted_transaction is None
+        
+        # Check if account balance was properly adjusted
+        db.session.refresh(account)
+        expected_balance = initial_balance + transaction_amount  # Expense deletion should increase balance
+        assert account.balance == expected_balance
+
+    def test_delete_modal_security_user_isolation(self, client, auth_client, user, account, category_expense):
+        """Test that users can't delete other users' transactions"""
+        # Create first user and transaction
+        user1 = auth_client.create_user(
+            username="user1",
+            email="user1@example.com", 
+            password="Password123!"
+        )
+        
+        account1 = Account(name='User1 Account', user_id=user1.id, balance=1000.00)
+        db.session.add(account1)
+        db.session.commit()
+        
+        category1 = Category(name='User1 Category', type='expense', user_id=user1.id)
+        db.session.add(category1)
+        db.session.commit()
+        
+        transaction1 = Transaction(
+            amount=100.00,
+            description='User1 transaction',
+            date=datetime.now(),
+            user_id=user1.id,
+            account_id=account1.id,
+            category_id=category1.id
+        )
+        db.session.add(transaction1)
+        db.session.commit()
+        transaction1_id = transaction1.id
+        
+        # Create second user
+        user2 = auth_client.create_user(
+            username="user2",
+            email="user2@example.com", 
+            password="Password123!"
+        )
+        
+        # Login as second user
+        auth_client.login(email="user2@example.com", password="Password123!")
+        
+        # User2 should not be able to delete User1's transaction
+        response = client.delete(f'/transactions/api/transactions/{transaction1_id}')
+        assert response.status_code == 404
+        
+        # Verify transaction still exists
+        transaction_still_exists = Transaction.query.get(transaction1_id)
+        assert transaction_still_exists is not None
+
+    def test_delete_modal_shows_transaction_details(self, client, auth_client, user, transaction):
+        """Test that the modal properly displays transaction details"""
+        auth_client.login()
+        
+        # Get the transaction via API to verify the details would be available
+        response = client.get(f'/transactions/api/transactions/{transaction.id}')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data['id'] == transaction.id
+        assert data['description'] == 'Test transaction for deletion'
+        assert data['amount'] == 50.00
+        assert 'account' in data
+        assert 'category' in data
+
+    def test_javascript_includes_delete_modal_logic(self, client, auth_client, user, account):
+        """Test that the transactions page includes the necessary JavaScript for delete modal"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that transactions.js is included
+        assert 'transactions.js' in html_content
+        
+        # Check that the modal elements are present for JavaScript to interact with
+        assert 'id="confirmDeleteTransaction"' in html_content
+        assert 'deleteTransactionModal' in html_content
+
+    def test_delete_confirmation_modal_structure(self, client, auth_client, user):
+        """Test that the delete confirmation modal has the correct structure"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check modal structure
+        assert 'modal fade' in html_content
+        assert 'Delete Transaction' in html_content
+        assert 'Are you sure you want to delete this transaction?' in html_content
+        assert 'This action cannot be undone' in html_content
+        assert 'btn btn-danger' in html_content
+        assert 'spinner-border' in html_content
+        assert 'fas fa-trash' in html_content
+
+
+class TestTransactionFlashMessages:
+    """Test suite for transaction flash messages functionality"""
+
+    @pytest.fixture
+    def user(self, db, auth_client):
+        """Create a test user"""
+        return auth_client.create_user()
+
+    @pytest.fixture
+    def account(self, db, user):
+        """Create a test account"""
+        account = Account(
+            name='Test Account',
+            user_id=user.id,
+            balance=1000.00
+        )
+        db.session.add(account)
+        db.session.commit()
+        return account
+
+    @pytest.fixture
+    def category_expense(self, db, user):
+        """Create a test expense category"""
+        category = Category(
+            name='Food',
+            type='expense',
+            unicode_emoji='🍕',
+            user_id=user.id
+        )
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @pytest.fixture
+    def transaction(self, db, user, account, category_expense):
+        """Create a test transaction"""
+        transaction = Transaction(
+            amount=50.00,
+            description='Test transaction',
+            account_id=account.id,
+            category_id=category_expense.id,
+            user_id=user.id,
+            date=datetime.now()
+        )
+        db.session.add(transaction)
+        db.session.commit()
+        return transaction
+
+    def test_transaction_success_create_flash_message(self, client, auth_client, user):
+        """Test that transaction success page shows correct flash message for create operation"""
+        auth_client.login()
+        
+        response = client.get('/transactions/success/create', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction created successfully!' in response.data
+        assert b'alert-success' in response.data
+
+    def test_transaction_success_update_flash_message(self, client, auth_client, user):
+        """Test that transaction success page shows correct flash message for update operation"""
+        auth_client.login()
+        
+        response = client.get('/transactions/success/update', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction updated successfully!' in response.data
+        assert b'alert-success' in response.data
+
+    def test_transaction_success_delete_flash_message(self, client, auth_client, user):
+        """Test that transaction success page shows correct flash message for delete operation"""
+        auth_client.login()
+        
+        response = client.get('/transactions/success/delete', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction deleted successfully!' in response.data
+        assert b'alert-success' in response.data
+
+    def test_transaction_error_flash_message(self, client, auth_client, user):
+        """Test that transaction error page shows correct flash message"""
+        auth_client.login()
+        
+        error_message = "Something went wrong"
+        response = client.get(f'/transactions/error/save?message={error_message}', follow_redirects=True)
+        assert response.status_code == 200
+        assert error_message.encode() in response.data
+        assert b'alert-danger' in response.data
+
+    def test_transaction_success_unknown_operation_flash_message(self, client, auth_client, user):
+        """Test that unknown operation shows default success message"""
+        auth_client.login()
+        
+        response = client.get('/transactions/success/unknown_operation', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Operation completed successfully!' in response.data
+        assert b'alert-success' in response.data
+
+    def test_transaction_error_without_message_parameter(self, client, auth_client, user):
+        """Test that error page without message parameter shows default error message"""
+        auth_client.login()
+        
+        response = client.get('/transactions/error/save', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'An error occurred during the operation.' in response.data
+        assert b'alert-danger' in response.data
+
+    def test_transaction_success_requires_login(self, client):
+        """Test that transaction success pages require authentication"""
+        response = client.get('/transactions/success/create')
+        assert response.status_code == 302  # Redirect to login
+
+    def test_transaction_error_requires_login(self, client):
+        """Test that transaction error pages require authentication"""
+        response = client.get('/transactions/error/save')
+        assert response.status_code == 302  # Redirect to login
+
+    def test_end_to_end_transaction_flow_with_flash_messages(self, client, auth_client, user, account, category_expense):
+        """Test complete transaction flow including flash messages"""
+        auth_client.login()
+        
+        # Test creating a transaction and getting success flash message
+        response = client.post('/transactions/api/transactions', 
+                              json={
+                                  'amount': 25.50,
+                                  'description': 'Coffee',
+                                  'account_id': account.id,
+                                  'category_id': category_expense.id,
+                                  'date': datetime.now().isoformat()
+                              })
+        assert response.status_code == 201
+        
+        # Check that the success endpoint works
+        response = client.get('/transactions/success/create', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction created successfully!' in response.data
+        
+        # Get the created transaction
+        transaction = Transaction.query.filter_by(description='Coffee').first()
+        assert transaction is not None
+        
+        # Test updating the transaction
+        response = client.put(f'/transactions/api/transactions/{transaction.id}',
+                             json={
+                                 'amount': 30.00,
+                                 'description': 'Expensive Coffee',
+                                 'account_id': account.id,
+                                 'category_id': category_expense.id,
+                                 'date': datetime.now().isoformat()
+                             })
+        assert response.status_code == 200
+        
+        # Check that the update success endpoint works
+        response = client.get('/transactions/success/update', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction updated successfully!' in response.data
+        
+        # Test deleting the transaction
+        response = client.delete(f'/transactions/api/transactions/{transaction.id}')
+        assert response.status_code == 200
+        
+        # Check that the delete success endpoint works
+        response = client.get('/transactions/success/delete', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Transaction deleted successfully!' in response.data
+        
+        # Verify transaction is deleted
+        deleted_transaction = Transaction.query.filter_by(description='Expensive Coffee').first()
+        assert deleted_transaction is None
+
+
+class TestMobileTransactionView:
+    """Test suite for mobile transaction view functionality"""
+
+    @pytest.fixture
+    def user(self, db, auth_client):
+        """Create a test user"""
+        return auth_client.create_user()
+
+    @pytest.fixture
+    def account(self, db, user):
+        """Create a test account"""
+        account = Account(
+            name='Mobile Test Account',
+            user_id=user.id,
+            balance=1000.00
+        )
+        db.session.add(account)
+        db.session.commit()
+        return account
+
+    @pytest.fixture
+    def category_expense(self, db, user):
+        """Create a test expense category"""
+        category = Category(
+            name='Food',
+            type='expense',
+            unicode_emoji='🍕',
+            user_id=user.id
+        )
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @pytest.fixture
+    def transaction(self, db, user, account, category_expense):
+        """Create a test transaction"""
+        transaction = Transaction(
+            amount=25.50,
+            description='Mobile test transaction',
+            account_id=account.id,
+            category_id=category_expense.id,
+            user_id=user.id,
+            date=datetime.now()
+        )
+        db.session.add(transaction)
+        db.session.commit()
+        return transaction
+
+    def test_desktop_table_view_present(self, client, auth_client, user, transaction):
+        """Test that desktop table view is present with correct classes"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that desktop table view exists with proper responsive classes
+        assert 'd-none d-md-block' in html_content
+        assert 'table-responsive' in html_content
+        assert 'Mobile test transaction' in html_content
+
+    def test_mobile_card_view_present(self, client, auth_client, user, transaction):
+        """Test that mobile card view is present with correct structure"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that mobile card view exists with proper responsive classes
+        assert 'd-block d-md-none' in html_content
+        assert 'mobile-transaction-card' in html_content
+        assert 'mobile-date' in html_content
+        assert 'mobile-meta' in html_content
+        assert 'mobile-category' in html_content
+        assert 'mobile-account' in html_content
+        assert 'mobile-description' in html_content
+        assert 'mobile-amount' in html_content
+
+    def test_mobile_view_contains_transaction_data(self, client, auth_client, user, transaction):
+        """Test that mobile view contains all transaction data"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that transaction data appears in mobile view
+        assert 'Mobile test transaction' in html_content
+        assert 'Mobile Test Account' in html_content
+        assert '🍕 Food' in html_content
+        assert '$25.50' in html_content
+
+    def test_mobile_view_transaction_clickable(self, client, auth_client, user, transaction):
+        """Test that mobile transaction cards are clickable with proper data attributes"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that mobile cards have transaction-row class and data attributes
+        assert 'transaction-row mobile-transaction-card' in html_content
+        assert f'data-transaction-id="{transaction.id}"' in html_content
+        assert 'cursor: pointer' in html_content
+
+    def test_mobile_transfer_badge_display(self, client, auth_client, user, account):
+        """Test that transfer badge displays correctly in mobile view"""
+        auth_client.login()
+        
+        # Create a normal expense category first
+        normal_category = Category(
+            name='Groceries',
+            type='expense',
+            unicode_emoji='�',
+            user_id=user.id
+        )
+        db.session.add(normal_category)
+        db.session.commit()
+        
+        # Create a normal transaction (transfer transactions are filtered out by default)
+        normal_transaction = Transaction(
+            amount=50.00,
+            description='Grocery shopping',
+            account_id=account.id,
+            category_id=normal_category.id,
+            user_id=user.id,
+            date=datetime.now()
+        )
+        db.session.add(normal_transaction)
+        db.session.commit()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that the mobile view contains the transaction
+        assert 'mobile-transaction-card' in html_content
+        assert 'Grocery shopping' in html_content
+        
+        # Since this is not a transfer, there should be no transfer badge
+        assert 'mobile-transfer-badge' not in html_content
+
+    def test_mobile_view_responsive_classes(self, client, auth_client, user, transaction):
+        """Test that mobile view has correct Bootstrap responsive classes"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check for proper Bootstrap grid classes in mobile view
+        assert 'col-4' in html_content  # Date column
+        assert 'col-5' in html_content  # Description column  
+        assert 'col-3 text-end' in html_content  # Amount column
+
+    def test_mobile_view_date_format(self, client, auth_client, user, transaction):
+        """Test that mobile view uses short date format"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Mobile view should use MM/DD format
+        expected_date = transaction.date.strftime('%m/%d')
+        assert expected_date in html_content
+
+    def test_both_views_have_same_transaction_functionality(self, client, auth_client, user, transaction):
+        """Test that both desktop and mobile views have the same click functionality"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Both views should have transaction-row class and data attributes
+        desktop_transaction_count = html_content.count('transaction-row')
+        # Should have 2 occurrences: one for desktop table row, one for mobile card
+        assert desktop_transaction_count == 2
+        
+        # Both should have the same data-transaction-id
+        transaction_id_count = html_content.count(f'data-transaction-id="{transaction.id}"')
+        assert transaction_id_count == 2

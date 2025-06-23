@@ -147,9 +147,7 @@ class TransactionManager {
         // Delete transaction button
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => {
-                if (confirm('Are you sure you want to delete this transaction?')) {
-                    this.deleteTransaction();
-                }
+                this.showDeleteConfirmationModal();
             });
         }
 
@@ -164,6 +162,14 @@ class TransactionManager {
                 document.body.classList.remove('modal-open');
                 document.body.style.overflow = '';
                 document.body.style.paddingRight = '';
+            });
+        }
+        
+        // Delete confirmation button
+        const confirmDeleteBtn = document.getElementById('confirmDeleteTransaction');
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', () => {
+                this.confirmDeleteTransaction();
             });
         }
     }
@@ -306,13 +312,20 @@ class TransactionManager {
                 throw new Error(error.error || 'Failed to save transaction');
             }
 
-            // Close modal and refresh page
+            // Close modal first
             this.modalInstance.hide();
-            window.location.reload();
+            
+            // Redirect to success page which will show flash message and then redirect back
+            const operation = transactionId ? 'update' : 'create';
+            window.location.href = `/transactions/success/${operation}`;
 
         } catch (error) {
             console.error('Error saving transaction:', error);
-            alert(`Error saving transaction: ${error.message}`);
+            
+            // Close modal and redirect to error page
+            this.modalInstance.hide();
+            const errorMessage = encodeURIComponent(error.message);
+            window.location.href = `/transactions/error/save?message=${errorMessage}`;
         }
     }
 
@@ -344,6 +357,110 @@ class TransactionManager {
         } catch (error) {
             console.error('Error deleting transaction:', error);
             alert(`Error deleting transaction: ${error.message}`);
+        }
+    }
+
+    showDeleteConfirmationModal() {
+        const transactionId = document.getElementById('transactionId').value;
+        if (!transactionId) return;
+
+        // Get current transaction data from the form
+        const amount = document.getElementById('amount').value;
+        const description = document.getElementById('description').value || 'No description';
+        const accountSelect = document.getElementById('modal_account_id');
+        const categorySelect = document.getElementById('modal_category_id');
+        const date = document.getElementById('date').value;
+
+        // Get selected account and category names
+        const accountName = accountSelect.options[accountSelect.selectedIndex]?.text || 'Unknown Account';
+        const categoryName = categorySelect.options[categorySelect.selectedIndex]?.text || 'Unknown Category';
+
+        // Format date for display
+        let formattedDate = 'Unknown Date';
+        if (date) {
+            try {
+                const dateObj = new Date(date);
+                formattedDate = dateObj.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                formattedDate = date;
+            }
+        }
+
+        // Populate delete confirmation modal
+        document.getElementById('deleteTransactionAmount').textContent = `$${parseFloat(amount || 0).toFixed(2)}`;
+        document.getElementById('deleteTransactionDescription').textContent = description;
+        document.getElementById('deleteTransactionAccount').textContent = accountName;
+        document.getElementById('deleteTransactionCategory').textContent = categoryName;
+        document.getElementById('deleteTransactionDate').textContent = formattedDate;
+
+        // Store transaction ID for deletion
+        document.getElementById('confirmDeleteTransaction').setAttribute('data-transaction-id', transactionId);
+
+        // Close the transaction modal first
+        this.modalInstance.hide();
+
+        // Show delete confirmation modal after a short delay
+        setTimeout(() => {
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteTransactionModal'));
+            deleteModal.show();
+        }, 300);
+    }
+
+    async confirmDeleteTransaction() {
+        const confirmBtn = document.getElementById('confirmDeleteTransaction');
+        const transactionId = confirmBtn.getAttribute('data-transaction-id');
+        
+        if (!transactionId) return;
+
+        // Show loading state
+        const spinner = confirmBtn.querySelector('.spinner-border');
+        const originalHTML = confirmBtn.innerHTML;
+        confirmBtn.disabled = true;
+        spinner.classList.remove('d-none');
+
+        try {
+            const response = await fetch(`/transactions/api/transactions/${transactionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to delete transaction');
+            }
+
+            // Close delete modal
+            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteTransactionModal'));
+            if (deleteModal) {
+                deleteModal.hide();
+            }
+
+            // Redirect to success page which will show flash message and then redirect back
+            window.location.href = '/transactions/success/delete';
+
+        } catch (error) {
+            console.error('Error deleting transaction:', error);
+            
+            // Close modal and redirect to error page
+            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteTransactionModal'));
+            if (deleteModal) {
+                deleteModal.hide();
+            }
+            
+            const errorMessage = encodeURIComponent(error.message);
+            window.location.href = `/transactions/error/delete?message=${errorMessage}`;
+        } finally {
+            // Reset button state
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = originalHTML;
         }
     }
 

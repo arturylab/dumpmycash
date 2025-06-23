@@ -1191,3 +1191,216 @@ class TestAccountInitialDeposit:
         assert data['monthly_income'] == initial_balance
         assert data['monthly_expenses'] == 0.0
         assert data['total_balance'] == initial_balance
+
+
+class TestReverseTransferModal:
+    """Test reverse transfer modal functionality."""
+    
+    @pytest.fixture(autouse=True)  
+    def setup_user(self, auth_client):
+        """Create and login a user for each test in this class."""
+        self.user = auth_client.create_user(
+            username="transferuser",
+            email="transfer@example.com", 
+            password="Password123!"
+        )
+        auth_client.login(email="transfer@example.com", password="Password123!")
+    
+    def test_reverse_transfer_modal_in_template(self, client, app):
+        """Test that the reverse transfer modal is present in the account template."""
+        # Create test accounts
+        with app.app_context():
+            account1 = Account(name='Source Account', balance=1000.0, user_id=self.user.id)
+            account2 = Account(name='Dest Account', balance=500.0, user_id=self.user.id)
+            db.session.add(account1)
+            db.session.add(account2)
+            db.session.commit()
+        
+        response = client.get('/account/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that reverse transfer modal is present
+        assert 'reverseTransferModal' in html_content
+        assert 'Reverse Transfer' in html_content
+        assert 'confirmReverseTransfer' in html_content
+        assert 'reverseTransferAmount' in html_content
+        assert 'reverseTransferFrom' in html_content
+        assert 'reverseTransferTo' in html_content
+        assert 'reverseTransferDate' in html_content
+        assert 'reverseTransferDescription' in html_content
+    
+    def test_transfer_api_detail_endpoint(self, client, app):
+        """Test that transfer detail API endpoint works correctly."""
+        # Create test accounts and transfer
+        with app.app_context():
+            account1 = Account(name='Test From', balance=1000.0, user_id=self.user.id)
+            account2 = Account(name='Test To', balance=500.0, user_id=self.user.id)
+            db.session.add(account1)
+            db.session.add(account2)
+            db.session.commit()
+            
+            # Create transfer record
+            transfer = Transfer(
+                amount=200.0,
+                description='Test transfer',
+                from_account_id=account1.id,
+                to_account_id=account2.id,
+                user_id=self.user.id,
+                date=datetime.now()
+            )
+            db.session.add(transfer)
+            db.session.commit()
+            transfer_id = transfer.id
+        
+        # Test API endpoint
+        response = client.get(f'/account/api/transfer/{transfer_id}')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data['id'] == transfer_id
+        assert data['amount'] == 200.0
+        assert data['formatted_amount'] == '$200.00'
+        assert data['description'] == 'Test transfer'
+        assert data['from_account']['name'] == 'Test From'
+        assert data['to_account']['name'] == 'Test To'
+        assert 'formatted_date' in data
+    
+    def test_transfer_api_detail_not_found(self, client):
+        """Test transfer detail API with non-existent transfer."""
+        response = client.get('/account/api/transfer/99999')
+        assert response.status_code == 404
+        
+        data = response.get_json()
+        assert 'error' in data
+    
+    def test_transfer_api_detail_security(self, client, auth_client, app):
+        """Test that users can't access other users' transfer details."""
+        # Create first user and transfer
+        user1 = auth_client.create_user(
+            username="user1",
+            email="user1@example.com", 
+            password="Password123!"
+        )
+        
+        with app.app_context():
+            account1 = Account(name='User1 From', balance=1000.0, user_id=user1.id)
+            account2 = Account(name='User1 To', balance=500.0, user_id=user1.id)
+            db.session.add(account1)
+            db.session.add(account2)
+            db.session.commit()
+            
+            transfer = Transfer(
+                amount=100.0,
+                description='User1 transfer',
+                from_account_id=account1.id,
+                to_account_id=account2.id,
+                user_id=user1.id,
+                date=datetime.now()
+            )
+            db.session.add(transfer)
+            db.session.commit()
+            transfer_id = transfer.id
+        
+        # Create second user and login as them
+        auth_client.create_user(
+            username="user2",
+            email="user2@example.com", 
+            password="Password123!"
+        )
+        auth_client.login(email="user2@example.com", password="Password123!")
+        
+        # User2 should not be able to access User1's transfer
+        response = client.get(f'/account/api/transfer/{transfer_id}')
+        assert response.status_code == 404
+    
+    def test_reverse_transfer_functionality(self, client, app):
+        """Test the complete reverse transfer functionality."""
+        # Create test accounts
+        initial_balance_from = 1000.0
+        initial_balance_to = 500.0
+        transfer_amount = 200.0
+        
+        with app.app_context():
+            account1 = Account(name='Reverse From', balance=initial_balance_from, user_id=self.user.id)
+            account2 = Account(name='Reverse To', balance=initial_balance_to, user_id=self.user.id)
+            db.session.add(account1)
+            db.session.add(account2)
+            db.session.commit()
+            account1_id = account1.id
+            account2_id = account2.id
+        
+        # Perform transfer
+        response = client.post('/account/transfer', data={
+            'from_account': account1_id,
+            'to_account': account2_id,
+            'amount': str(transfer_amount),
+            'description': 'Test reverse transfer'
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        
+        # Verify balances after transfer
+        with app.app_context():
+            account1 = Account.query.get(account1_id)
+            account2 = Account.query.get(account2_id)
+            assert account1.balance == initial_balance_from - transfer_amount  # 800.0
+            assert account2.balance == initial_balance_to + transfer_amount    # 700.0
+            
+            # Get the transfer for reversal
+            transfer = Transfer.query.filter_by(user_id=self.user.id).first()
+            assert transfer is not None
+            transfer_id = transfer.id
+        
+        # Reverse the transfer
+        response = client.post(f'/account/transfer/{transfer_id}/reverse', 
+                             headers={'X-Requested-With': 'XMLHttpRequest'})
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert 'reversed successfully' in data['message']
+        
+        # Verify balances are restored
+        with app.app_context():
+            account1 = Account.query.get(account1_id)
+            account2 = Account.query.get(account2_id)
+            assert account1.balance == initial_balance_from  # Back to 1000.0
+            assert account2.balance == initial_balance_to    # Back to 500.0
+            
+            # Verify transfer is deleted
+            transfer = Transfer.query.get(transfer_id)
+            assert transfer is None
+    
+    def test_reverse_transfer_nonexistent(self, client):
+        """Test reversing a non-existent transfer."""
+        response = client.post('/account/transfer/99999/reverse', 
+                             headers={'X-Requested-With': 'XMLHttpRequest'})
+        
+        assert response.status_code == 404
+        data = response.get_json()
+        assert data['status'] == 'error'
+        assert 'not found' in data['message']
+    
+    def test_javascript_includes_reverse_modal_logic(self, client, app):
+        """Test that the account page includes the necessary JavaScript for reverse modal."""
+        with app.app_context():
+            account = Account(name='JS Test Account', balance=1000.0, user_id=self.user.id)
+            db.session.add(account)
+            db.session.commit()
+        
+        response = client.get('/account/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that account.js is included
+        assert 'account.js' in html_content
+        
+        # Check that the modal elements are present for JavaScript to interact with
+        assert 'id="confirmReverseTransfer"' in html_content
+        assert 'reverseTransferModal' in html_content
+        assert 'Reverse Transfer' in html_content

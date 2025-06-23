@@ -757,3 +757,25 @@ def export_csv():
     except Exception as e:
         flash(f'Error exporting transactions: {str(e)}', 'error')
         return redirect(url_for('transactions.list_transactions'))
+
+@transaction_bp.route('/success/<operation>')
+@login_required
+def transaction_success(operation):
+    """Endpoint para mostrar mensajes de éxito después de operaciones de transacciones"""
+    messages = {
+        'create': 'Transaction created successfully!',
+        'update': 'Transaction updated successfully!',
+        'delete': 'Transaction deleted successfully!'
+    }
+    
+    message = messages.get(operation, 'Operation completed successfully!')
+    flash(message, 'success')
+    return redirect(url_for('transactions.list_transactions'))
+
+@transaction_bp.route('/error/<operation>')
+@login_required
+def transaction_error(operation):
+    """Endpoint para mostrar mensajes de error después de operaciones de transacciones"""
+    error_message = request.args.get('message', 'An error occurred during the operation.')
+    flash(error_message, 'error')
+    return redirect(url_for('transactions.list_transactions'))

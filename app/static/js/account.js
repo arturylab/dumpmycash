@@ -92,6 +92,75 @@ document.addEventListener('DOMContentLoaded', function() {
     if (transferForm) {
         transferForm.addEventListener('submit', handleTransferSubmit);
     }
+    
+    // Reverse Transfer confirmation handler
+    const confirmReverseBtn = document.getElementById('confirmReverseTransfer');
+    if (confirmReverseBtn) {
+        confirmReverseBtn.addEventListener('click', function() {
+            const transferId = this.getAttribute('data-transfer-id');
+            if (!transferId) return;
+            
+            // Show loading state
+            const spinner = confirmReverseBtn.querySelector('.spinner-border');
+            const originalHTML = confirmReverseBtn.innerHTML;
+            confirmReverseBtn.disabled = true;
+            spinner.classList.remove('d-none');
+            
+            // Get CSRF token from meta tag
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            
+            if (!csrfToken) {
+                showAlert('CSRF token not found. Please refresh the page and try again.', 'danger');
+                confirmReverseBtn.disabled = false;
+                spinner.classList.add('d-none');
+                return;
+            }
+            
+            // Create form data with CSRF token
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            
+            fetch(`/account/transfer/${transferId}/reverse`, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(data.message, 'success');
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('reverseTransferModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+                    
+                    // Refresh data
+                    loadRecentTransfers();
+                    loadAccountChart();
+                    
+                    // Reload page to update account balances
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showAlert(data.message || 'Error reversing transfer', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error reversing transfer:', error);
+                showAlert('Error reversing transfer. Please try again.', 'danger');
+            })
+            .finally(() => {
+                // Reset button state
+                confirmReverseBtn.disabled = false;
+                confirmReverseBtn.innerHTML = originalHTML;
+            });
+        });
+    }
 });
 
 function editAccount(id, name, balance, color) {
@@ -539,59 +608,32 @@ function viewTransferDetails(transferId) {
 }
 
 function deleteTransfer(transferId) {
-    if (!confirm('Are you sure you want to reverse this transfer? This will restore the original account balances.')) {
-        return;
-    }
-    
-    // Get CSRF token from meta tag
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-        showAlert('CSRF token not found. Please refresh the page and try again.', 'danger');
-        return;
-    }
-    
-    // Create form data with CSRF token
-    const formData = new FormData();
-    formData.append('csrf_token', csrfToken);
-    
-    fetch(`/account/transfer/${transferId}/reverse`, {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            showAlert(data.message, 'success');
-            
-            // Close any open modals
-            const modals = document.querySelectorAll('.modal.show');
-            modals.forEach(modal => {
-                const bsModal = bootstrap.Modal.getInstance(modal);
-                if (bsModal) {
-                    bsModal.hide();
-                }
-            });
-            
-            // Refresh data
-            loadRecentTransfers();
-            loadAccountChart();
-            
-            // Reload page to update account balances
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.message || 'Error reversing transfer', 'danger');
-        }
-    })
-    .catch(error => {
-        console.error('Error reversing transfer:', error);
-        showAlert('Error reversing transfer. Please try again.', 'danger');
-    });
+    // Fetch transfer details first
+    fetch(`/account/api/transfer/${transferId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                // Populate modal with transfer details
+                document.getElementById('reverseTransferAmount').textContent = data.formatted_amount;
+                document.getElementById('reverseTransferFrom').textContent = data.from_account.name;
+                document.getElementById('reverseTransferTo').textContent = data.to_account.name;
+                document.getElementById('reverseTransferDate').textContent = data.formatted_date;
+                document.getElementById('reverseTransferDescription').textContent = data.description || 'No description';
+                
+                // Store transfer ID for confirmation
+                document.getElementById('confirmReverseTransfer').setAttribute('data-transfer-id', transferId);
+                
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('reverseTransferModal'));
+                modal.show();
+            } else {
+                showAlert('Transfer not found', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading transfer details:', error);
+            showAlert('Error loading transfer details', 'danger');
+        });
 }
 
 function loadTransferSummary() {
