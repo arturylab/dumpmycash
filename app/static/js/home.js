@@ -33,7 +33,8 @@ function initializeQuickActions() {
     const addTransactionBtns = document.querySelectorAll('[data-action="add-transaction"]');
     addTransactionBtns.forEach(btn => {
         btn.addEventListener('click', function() {
-            window.location.href = '/transactions/new';
+            // Navigate to transactions page where the modal can be opened
+            window.location.href = '/transactions?openModal=addTransaction';
         });
     });
     

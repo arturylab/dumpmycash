@@ -10,6 +10,31 @@ transaction_bp = Blueprint('transactions', __name__, url_prefix='/transactions')
 
 transaction_bp = Blueprint('transactions', __name__, url_prefix='/transactions')
 
+def parse_datetime_local(date_string):
+    """Parse datetime string from frontend, treating it as local time"""
+    if not date_string:
+        return datetime.now()
+    
+    try:
+        # The frontend sends datetime-local format: YYYY-MM-DDTHH:MM
+        # We need to parse this as local time, not UTC
+        if 'T' in date_string:
+            # Remove timezone info if present and parse as local time
+            if date_string.endswith('Z'):
+                date_string = date_string[:-1]
+            
+            # Parse the datetime string
+            dt = datetime.fromisoformat(date_string)
+            return dt
+        else:
+            # If only date is provided, set time to current time
+            dt = datetime.strptime(date_string, '%Y-%m-%d')
+            now = datetime.now()
+            return dt.replace(hour=now.hour, minute=now.minute, second=now.second)
+    except (ValueError, TypeError):
+        # If parsing fails, return current time
+        return datetime.now()
+
 def get_date_range(filter_type, start_date_str=None, end_date_str=None):
     """Obtener el rango de fechas basado en el tipo de filtro"""
     now = datetime.now()
@@ -272,18 +297,6 @@ def api_list_transactions():
         }
     })
 
-@transaction_bp.route('/new')
-@login_required
-def new_transaction():
-    """Mostrar formulario para crear nueva transacción"""
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
-    categories = Category.query.filter_by(user_id=g.user.id).all()
-    
-    return render_template('dashboard/transaction_form.html',
-                         accounts=accounts,
-                         categories=categories,
-                         transaction=None)
-
 @transaction_bp.route('/api/transactions', methods=['POST'])
 @api_login_required
 def api_create_transaction():
@@ -314,10 +327,41 @@ def api_create_transaction():
             account_id=data['account_id'],
             category_id=data['category_id'],
             user_id=g.user.id,
-            date=datetime.fromisoformat(data['date']) if data.get('date') else datetime.now()
+            date=parse_datetime_local(data.get('date'))
         )
         
         db.session.add(transaction)
+        
+        # Actualizar balance de la cuenta
+        if category.type == 'income':
+            account.balance += transaction.amount
+        else:  # expense
+            account.balance -= transaction.amount
+        
+        db.session.commit()
+        
+        return jsonify({
+            'id': transaction.id,
+            'amount': transaction.amount,
+            'date': transaction.date.isoformat(),
+            'description': transaction.description,
+            'account': {
+                'id': transaction.account.id,
+                'name': transaction.account.name
+            },
+            'category': {
+                'id': transaction.category.id,
+                'name': transaction.category.name,
+                'type': transaction.category.type,
+                'unicode_emoji': transaction.category.unicode_emoji
+            }
+        }), 201
+        
+    except ValueError as e:
+        return jsonify({'error': 'Monto inválido'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al crear la transacción'}), 500
         
         # Actualizar balance de la cuenta
         if category.type == 'income':
@@ -351,75 +395,6 @@ def api_create_transaction():
         db.session.rollback()
         return jsonify({'error': 'Error interno del servidor'}), 500
 
-@transaction_bp.route('/', methods=['POST'])
-@login_required
-def create_transaction():
-    """Crear nueva transacción desde formulario web"""
-    try:
-        # Validar datos del formulario
-        amount = request.form.get('amount')
-        account_id = request.form.get('account_id')
-        category_id = request.form.get('category_id')
-        description = request.form.get('description', '')
-        date_str = request.form.get('date')
-        
-        if not all([amount, account_id, category_id]):
-            flash('Todos los campos requeridos deben ser completados', 'error')
-            return redirect(url_for('transactions.new_transaction'))
-        
-        # Validar que la cuenta pertenece al usuario
-        account = Account.query.filter_by(id=account_id, user_id=g.user.id).first()
-        if not account:
-            flash('Cuenta no encontrada', 'error')
-            return redirect(url_for('transactions.new_transaction'))
-        
-        # Validar que la categoría pertenece al usuario
-        category = Category.query.filter_by(id=category_id, user_id=g.user.id).first()
-        if not category:
-            flash('Categoría no encontrada', 'error')
-            return redirect(url_for('transactions.new_transaction'))
-        
-        # Crear nueva transacción
-        transaction = Transaction(
-            amount=float(amount),
-            description=description,
-            account_id=account_id,
-            category_id=category_id,
-            user_id=g.user.id,
-            date=datetime.fromisoformat(date_str) if date_str else datetime.now()
-        )
-        
-        db.session.add(transaction)
-        
-        # Actualizar balance de la cuenta
-        if category.type == 'income':
-            account.balance += transaction.amount
-        else:  # expense
-            account.balance -= transaction.amount
-        
-        db.session.commit()
-        flash('Transacción creada exitosamente', 'success')
-        return redirect(url_for('transactions.list_transactions'))
-        
-    except ValueError:
-        flash('Monto inválido', 'error')
-        return redirect(url_for('transactions.new_transaction'))
-    except Exception as e:
-        db.session.rollback()
-        flash('Error al crear la transacción', 'error')
-        return redirect(url_for('transactions.new_transaction'))
-
-@transaction_bp.route('/<int:transaction_id>')
-@login_required
-def view_transaction(transaction_id):
-    """Ver detalles de una transacción específica"""
-    transaction = Transaction.query.filter_by(
-        id=transaction_id, 
-        user_id=g.user.id
-    ).first_or_404()
-    
-    return render_template('dashboard/transaction_detail.html', transaction=transaction)
-
 @transaction_bp.route('/api/transactions/<int:transaction_id>')
 @api_login_required
 def api_get_transaction(transaction_id):
@@ -445,23 +420,6 @@ def api_get_transaction(transaction_id):
             'unicode_emoji': transaction.category.unicode_emoji
         }
     })
-
-@transaction_bp.route('/<int:transaction_id>/edit')
-@login_required
-def edit_transaction(transaction_id):
-    """Mostrar formulario para editar transacción"""
-    transaction = Transaction.query.filter_by(
-        id=transaction_id, 
-        user_id=g.user.id
-    ).first_or_404()
-    
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
-    categories = Category.query.filter_by(user_id=g.user.id).all()
-    
-    return render_template('dashboard/transaction_form.html',
-                         accounts=accounts,
-                         categories=categories,
-                         transaction=transaction)
 
 @transaction_bp.route('/api/transactions/<int:transaction_id>', methods=['PUT'])
 @api_login_required
@@ -512,7 +470,7 @@ def api_update_transaction(transaction_id):
         if 'category_id' in data:
             transaction.category_id = data['category_id']
         if 'date' in data:
-            transaction.date = datetime.fromisoformat(data['date'])
+            transaction.date = parse_datetime_local(data['date'])
         
         # Aplicar nuevo balance
         if new_category.type == 'income':
@@ -546,86 +504,16 @@ def api_update_transaction(transaction_id):
         db.session.rollback()
         return jsonify({'error': 'Error interno del servidor'}), 500
 
-@transaction_bp.route('/<int:transaction_id>', methods=['POST'])
-@login_required
-def update_transaction(transaction_id):
-    """Actualizar transacción desde formulario web"""
-    try:
-        transaction = Transaction.query.filter_by(
-            id=transaction_id, 
-            user_id=g.user.id
-        ).first_or_404()
-        
-        # Guardar valores anteriores para revertir balance
-        old_amount = transaction.amount
-        old_category = transaction.category
-        old_account = transaction.account
-        
-        # Obtener datos del formulario
-        amount = request.form.get('amount')
-        account_id = request.form.get('account_id')
-        category_id = request.form.get('category_id')
-        description = request.form.get('description', '')
-        date_str = request.form.get('date')
-        
-        if not all([amount, account_id, category_id]):
-            flash('Todos los campos requeridos deben ser completados', 'error')
-            return redirect(url_for('transactions.edit_transaction', transaction_id=transaction_id))
-        
-        # Validar nueva cuenta
-        new_account = Account.query.filter_by(id=account_id, user_id=g.user.id).first()
-        if not new_account:
-            flash('Cuenta no encontrada', 'error')
-            return redirect(url_for('transactions.edit_transaction', transaction_id=transaction_id))
-        
-        # Validar nueva categoría
-        new_category = Category.query.filter_by(id=category_id, user_id=g.user.id).first()
-        if not new_category:
-            flash('Categoría no encontrada', 'error')
-            return redirect(url_for('transactions.edit_transaction', transaction_id=transaction_id))
-        
-        # Revertir balance anterior
-        if old_category.type == 'income':
-            old_account.balance -= old_amount
-        else:  # expense
-            old_account.balance += old_amount
-        
-        # Actualizar transacción
-        transaction.amount = float(amount)
-        transaction.description = description
-        transaction.account_id = account_id
-        transaction.category_id = category_id
-        if date_str:
-            transaction.date = datetime.fromisoformat(date_str)
-        
-        # Aplicar nuevo balance
-        if new_category.type == 'income':
-            new_account.balance += transaction.amount
-        else:  # expense
-            new_account.balance -= transaction.amount
-        
-        db.session.commit()
-        flash('Transacción actualizada exitosamente', 'success')
-        return redirect(url_for('transactions.list_transactions'))
-        
-    except ValueError:
-        flash('Monto inválido', 'error')
-        return redirect(url_for('transactions.edit_transaction', transaction_id=transaction_id))
-    except Exception as e:
-        db.session.rollback()
-        flash('Error al actualizar la transacción', 'error')
-        return redirect(url_for('transactions.edit_transaction', transaction_id=transaction_id))
-
 @transaction_bp.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_transaction(transaction_id):
     """API endpoint para eliminar una transacción"""
+    transaction = Transaction.query.filter_by(
+        id=transaction_id, 
+        user_id=g.user.id
+    ).first_or_404()
+    
     try:
-        transaction = Transaction.query.filter_by(
-            id=transaction_id, 
-            user_id=g.user.id
-        ).first_or_404()
-        
         # Revertir balance de la cuenta
         account = transaction.account
         category = transaction.category
@@ -646,36 +534,6 @@ def api_delete_transaction(transaction_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Error interno del servidor'}), 500
-
-@transaction_bp.route('/<int:transaction_id>/delete', methods=['POST'])
-@login_required
-def delete_transaction(transaction_id):
-    """Eliminar transacción desde formulario web"""
-    try:
-        transaction = Transaction.query.filter_by(
-            id=transaction_id, 
-            user_id=g.user.id
-        ).first_or_404()
-        
-        # Revertir balance de la cuenta
-        account = transaction.account
-        category = transaction.category
-        
-        if category.type == 'income':
-            account.balance -= transaction.amount
-        else:  # expense
-            account.balance += transaction.amount
-        
-        db.session.delete(transaction)
-        db.session.commit()
-        
-        flash('Transacción eliminada exitosamente', 'success')
-        return redirect(url_for('transactions.list_transactions'))
-        
-    except Exception as e:
-        db.session.rollback()
-        flash('Error al eliminar la transacción', 'error')
-        return redirect(url_for('transactions.list_transactions'))
 
 @transaction_bp.route('/api/statistics')
 @api_login_required

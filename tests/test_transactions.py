@@ -85,29 +85,30 @@ class TestTransactions:
         assert response.status_code == 200
         assert b'No transactions found' in response.data
 
-    def test_new_transaction_form(self, client, auth_client, user, account, category_expense):
-        """Test new transaction form display"""
+    def test_transaction_modal_elements(self, client, auth_client, user, account, category_expense):
+        """Test that transaction modal elements are present"""
         auth_client.login()
         
-        response = client.get('/transactions/new')
+        response = client.get('/transactions/')
         assert response.status_code == 200
-        assert b'New Transaction' in response.data
+        assert b'transactionModal' in response.data
+        assert b'Add Transaction' in response.data
 
     def test_create_transaction_success(self, client, auth_client, user, account, category_expense):
-        """Test successful transaction creation"""
+        """Test successful transaction creation via API"""
         auth_client.login()
         initial_balance = account.balance
         
-        response = client.post('/transactions/', data={
-            'amount': '75.50',
-            'description': 'Groceries',
-            'account_id': account.id,
-            'category_id': category_expense.id,
-            'date': datetime.now().strftime('%Y-%m-%dT%H:%M')
-        }, follow_redirects=True)
+        response = client.post('/transactions/api/transactions', 
+                              json={
+                                  'amount': 75.50,
+                                  'description': 'Groceries',
+                                  'account_id': account.id,
+                                  'category_id': category_expense.id,
+                                  'date': datetime.now().isoformat()
+                              })
         
-        assert response.status_code == 200
-        # Just check that we were redirected successfully, not for a specific message
+        assert response.status_code == 201
         
         # Check if transaction was created in database
         transaction = Transaction.query.filter_by(description='Groceries').first()
@@ -120,58 +121,70 @@ class TestTransactions:
         assert account.balance == initial_balance - 75.50
 
     def test_create_transaction_income(self, client, auth_client, user, account, category_income):
-        """Test creating an income transaction"""
+        """Test creating an income transaction via API"""
         auth_client.login()
         initial_balance = account.balance
         
-        response = client.post('/transactions/', data={
-            'amount': '2500.00',
-            'description': 'Monthly salary',
-            'account_id': account.id,
-            'category_id': category_income.id,
-            'date': datetime.now().strftime('%Y-%m-%dT%H:%M')
-        }, follow_redirects=True)
+        response = client.post('/transactions/api/transactions', 
+                              json={
+                                  'amount': 2500.00,
+                                  'description': 'Monthly salary',
+                                  'account_id': account.id,
+                                  'category_id': category_income.id,
+                                  'date': datetime.now().isoformat()
+                              })
         
-        assert response.status_code == 200
+        assert response.status_code == 201
         
         # Check if account balance was updated (income should increase balance)
         db.session.refresh(account)
         assert account.balance == initial_balance + 2500.00
 
-    def test_view_transaction(self, client, auth_client, user, transaction):
-        """Test viewing a specific transaction"""
+    def test_transaction_row_clickable(self, client, auth_client, user, transaction):
+        """Test that transaction rows have clickable attributes"""
         auth_client.login()
         
-        response = client.get(f'/transactions/{transaction.id}')
+        response = client.get('/transactions/')
         assert response.status_code == 200
-        assert b'Transaction Details' in response.data
+        assert b'transaction-row' in response.data
+        assert b'data-transaction-id' in response.data
 
     def test_view_transaction_not_found(self, client, auth_client, user):
-        """Test viewing non-existent transaction"""
+        """Test getting non-existent transaction via API"""
         auth_client.login()
         
-        response = client.get('/transactions/999')
+        response = client.get('/transactions/api/transactions/999')
         assert response.status_code == 404
 
-    def test_edit_transaction_form(self, client, auth_client, user, transaction):
-        """Test edit transaction form display"""
+    def test_edit_transaction_via_api(self, client, auth_client, user, transaction):
+        """Test editing transaction via API"""
         auth_client.login()
         
-        response = client.get(f'/transactions/{transaction.id}/edit')
+        response = client.put(f'/transactions/api/transactions/{transaction.id}',
+                             json={
+                                 'amount': 65.00,
+                                 'description': 'Updated transaction'
+                             })
+        
         assert response.status_code == 200
-        assert b'Edit Transaction' in response.data
+        
+        # Check if transaction was updated in database
+        db.session.refresh(transaction)
+        assert transaction.amount == 65.00
+        assert transaction.description == 'Updated transaction'
 
     def test_update_transaction_success(self, client, auth_client, user, transaction, account, category_expense):
-        """Test successful transaction update"""
+        """Test successful transaction update via API"""
         auth_client.login()
         
-        response = client.post(f'/transactions/{transaction.id}', data={
-            'amount': '65.00',
-            'description': 'Updated transaction',
-            'account_id': account.id,
-            'category_id': category_expense.id,
-            'date': datetime.now().strftime('%Y-%m-%dT%H:%M')
-        }, follow_redirects=True)
+        response = client.put(f'/transactions/api/transactions/{transaction.id}',
+                             json={
+                                 'amount': 65.00,
+                                 'description': 'Updated transaction',
+                                 'account_id': account.id,
+                                 'category_id': category_expense.id,
+                                 'date': datetime.now().isoformat()
+                             })
         
         assert response.status_code == 200
         
@@ -181,12 +194,12 @@ class TestTransactions:
         assert transaction.description == 'Updated transaction'
 
     def test_delete_transaction_success(self, client, auth_client, user, transaction, account):
-        """Test successful transaction deletion"""
+        """Test successful transaction deletion via API"""
         auth_client.login()
         initial_balance = account.balance
         transaction_amount = transaction.amount
         
-        response = client.post(f'/transactions/{transaction.id}/delete', follow_redirects=True)
+        response = client.delete(f'/transactions/api/transactions/{transaction.id}')
         
         assert response.status_code == 200
         
@@ -199,13 +212,11 @@ class TestTransactions:
         assert account.balance == initial_balance + transaction_amount
 
     def test_delete_transaction_not_found(self, client, auth_client, user):
-        """Test deleting non-existent transaction"""
+        """Test deleting non-existent transaction via API"""
         auth_client.login()
         
-        # This should return 404, but due to how Flask handles 404s in tests,
-        # we might get a different response
-        response = client.post('/transactions/999/delete', follow_redirects=False)
-        assert response.status_code in [404, 302]  # 404 or redirect
+        response = client.delete('/transactions/api/transactions/999')
+        assert response.status_code == 404
 
     # API Tests
     def test_api_list_transactions_requires_login(self, client):
@@ -333,30 +344,32 @@ class TestTransactions:
         assert data['summary']['net_income'] == 1500.00
 
     def test_transaction_balance_calculations(self, client, auth_client, user, account, category_income, category_expense):
-        """Test that transaction operations correctly update account balances"""
+        """Test that transaction operations correctly update account balances via API"""
         auth_client.login()
         initial_balance = account.balance
         
-        # Create income transaction
-        client.post('/transactions/', data={
-            'amount': '1000.00',
-            'description': 'Salary',
-            'account_id': account.id,
-            'category_id': category_income.id,
-            'date': datetime.now().strftime('%Y-%m-%dT%H:%M')
-        })
+        # Create income transaction via API
+        client.post('/transactions/api/transactions', 
+                   json={
+                       'amount': 1000.00,
+                       'description': 'Salary',
+                       'account_id': account.id,
+                       'category_id': category_income.id,
+                       'date': datetime.now().isoformat()
+                   })
         
         db.session.refresh(account)
         assert account.balance == initial_balance + 1000.00
         
-        # Create expense transaction
-        client.post('/transactions/', data={
-            'amount': '200.00',
-            'description': 'Groceries',
-            'account_id': account.id,
-            'category_id': category_expense.id,
-            'date': datetime.now().strftime('%Y-%m-%dT%H:%M')
-        })
+        # Create expense transaction via API
+        client.post('/transactions/api/transactions', 
+                   json={
+                       'amount': 200.00,
+                       'description': 'Groceries',
+                       'account_id': account.id,
+                       'category_id': category_expense.id,
+                       'date': datetime.now().isoformat()
+                   })
         
         db.session.refresh(account)
         assert account.balance == initial_balance + 1000.00 - 200.00
@@ -634,8 +647,8 @@ class TestTransactions:
         assert 'Export CSV' in response_text
         assert '/transactions/export/csv' in response_text
 
-    def test_transfer_action_buttons_data_attributes(self, client, auth_client, user, account, category_expense):
-        """Test that transfer action buttons use data attributes instead of inline onclick"""
+    def test_transaction_rows_are_clickable(self, client, auth_client, user, account, category_expense):
+        """Test that transaction rows are clickable and have proper data attributes"""
         
         # Create a regular transaction to ensure page renders
         transaction = Transaction(
@@ -654,11 +667,17 @@ class TestTransactions:
         assert response.status_code == 200
         response_text = response.data.decode('utf-8')
         
-        # Check that we're using data attributes for delete action
-        assert 'data-action="delete-transaction"' in response_text
+        # Check that transaction rows have proper attributes for being clickable
+        assert 'transaction-row' in response_text
+        assert 'data-transaction-id' in response_text
+        assert 'cursor: pointer' in response_text
         
-        # Verify that we're NOT using inline onclick for delete anymore
-        assert 'onclick="deleteTransaction(' not in response_text
-        
-        # The transfer-specific actions would only appear if there were transfer transactions
-        # But the important thing is that we've moved away from inline onclick handlers
+        # Verify that we no longer have Actions column in the transactions table
+        # (Note: "Actions" might appear in "Quick Actions" but not in table headers)
+        import re
+        table_headers = re.search(r'<thead.*?</thead>', response_text, re.DOTALL)
+        if table_headers:
+            table_header_text = table_headers.group(0)
+            # Count how many times "Actions" appears in table headers specifically
+            actions_in_headers = table_header_text.count('Actions')
+            assert actions_in_headers == 0, f"Found 'Actions' {actions_in_headers} times in table headers"
