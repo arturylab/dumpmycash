@@ -1,1 +1,0 @@
-# Selenium tests package

@@ -6,24 +6,26 @@
 <div class="container-fluid">
   <!-- Main Grid -->
   <div class="row g-4">
-    <!-- Total Balance -->
-    <div class="col-lg-3 col-md-6">
-      <div class="card minimal-card h-100">
-        <div class="card-body text-center">
-          <h5 class="card-title text-muted mb-3">Total Balance</h5>
-          <h1 class="{{ 'text-success' if total_balance >= 0 else 'text-danger' }} mb-0" data-stat="total-balance">
-            {{ total_balance|currency }}
-          </h1>
-        </div>
-      </div>
-    </div>
 
     <!-- Period Statistics -->
-    <div class="col-lg-6 col-md-6">
+    <div class="col-lg-9 col-md-6">
       <div class="card minimal-card period-stats h-100">
         <div class="card-body">
           <h5 class="card-title text-center mb-4 text-muted">Financial Overview</h5>
           <div class="stats-grid">
+
+            <!-- Total Stats -->
+            <div class="text-center">
+              <h6 class="text-muted mb-2">Total Balance</h6>
+              <h4 class="{{ 'text-success' if total_balance >= 0 else 'text-danger' }}" data-stat="total-balance">
+                {{ total_balance|currency }}
+              </h4>
+              <small class="text-muted" id="total-breakdown">
+                <span class="text-success">+{{ total_income|currency }}</span> | 
+                <span class="text-danger">-{{ total_expenses|currency }}</span>
+              </small>
+            </div>
+            
             <!-- Monthly Stats -->
             <div class="text-center">
               <h6 class="text-muted mb-2">{{ current_month }}</h6>
@@ -33,6 +35,18 @@
               <small class="text-muted">
                 <span class="text-success">+{{ month_income|currency }}</span> | 
                 <span class="text-danger">-{{ month_expenses|currency }}</span>
+              </small>
+            </div>
+            
+            <!-- Weekly Stats -->
+            <div class="text-center">
+              <h6 class="text-muted mb-2">This Week</h6>
+              <h4 class="text-info" data-stat="weekly-net">
+                <span id="weekly-balance">Loading...</span>
+              </h4>
+              <small class="text-muted" id="weekly-breakdown">
+                <span class="text-success">+$0.00</span> | 
+                <span class="text-danger">-$0.00</span>
               </small>
             </div>
             
@@ -48,17 +62,6 @@
               </small>
             </div>
             
-            <!-- Weekly Stats -->
-            <div class="text-center">
-              <h6 class="text-muted mb-2">This Week</h6>
-              <h4 class="text-info" data-stat="weekly-net">
-                <span id="weekly-balance">Loading...</span>
-              </h4>
-              <small class="text-muted" id="weekly-breakdown">
-                <span class="text-success">+$0.00</span> | 
-                <span class="text-danger">-$0.00</span>
-              </small>
-            </div>
           </div>
         </div>
       </div>
@@ -70,14 +73,14 @@
         <div class="card-body">
           <h5 class="card-title text-center mb-3 text-muted">Quick Actions</h5>
           <div class="d-grid gap-2">
-            <button type="button" class="btn btn-outline-primary btn-sm" data-action="add-transaction">
-              <i class="fas fa-plus me-2"></i>Add Transaction
-            </button>
             <button type="button" class="btn btn-outline-success btn-sm" data-action="add-account" data-auto-modal="true">
               <i class="fas fa-wallet me-2"></i>Add Account
             </button>
+            <button type="button" class="btn btn-outline-primary btn-sm" data-action="add-transaction">
+              <i class="fas fa-exchange-alt me-2"></i></i>Add Transaction
+            </button>
             <button type="button" class="btn btn-outline-secondary btn-sm" data-action="manage-categories">
-              <i class="fas fa-tags me-2"></i>Categories
+              <i class="fas fa-tags me-2"></i>Add Categories
             </button>
             <button type="button" class="btn btn-outline-info btn-sm" data-action="generate-report">
               <i class="fas fa-chart-line me-2"></i>Report

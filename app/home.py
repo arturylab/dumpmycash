@@ -23,26 +23,26 @@ def dashboard():
     now = datetime.now()
     current_month_start = datetime(now.year, now.month, 1)
     
-    # Calculate total balance
+    # Calculate total balance (excluding transfers for consistency with account.py)
     total_income = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
-        Transaction.category.has(Category.type == 'income')
+        Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer'))
     ).scalar() or 0
     
     total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
-        Transaction.category.has(Category.type == 'expense')
+        Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer'))
     ).scalar() or 0
     
     total_balance = total_income - total_expenses
     
-    # Calculate current month income and expenses
+    # Calculate current month income and expenses (excluding transfers)
     month_income = db.session.query(
         func.coalesce(func.sum(Transaction.amount), 0)
     ).filter(
         and_(
             Transaction.user_id == g.user.id,
-            Transaction.category.has(Category.type == 'income'),
+            Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
             Transaction.date >= current_month_start
         )
     ).scalar()
@@ -52,7 +52,7 @@ def dashboard():
     ).filter(
         and_(
             Transaction.user_id == g.user.id,
-            Transaction.category.has(Category.type == 'expense'),
+            Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
             Transaction.date >= current_month_start
         )
     ).scalar()
@@ -60,6 +60,8 @@ def dashboard():
     return render_template('dashboard/home.html', 
                          title='Dashboard',
                          total_balance=total_balance,
+                         total_income=total_income,
+                         total_expenses=total_expenses,
                          month_income=month_income,
                          month_expenses=month_expenses,
                          month_net=month_income - month_expenses,
@@ -75,15 +77,15 @@ def api_stats():
         days = request.args.get('days', 30, type=int)
         start_date = datetime.now() - timedelta(days=days)
         
-        # Calculate statistics
+        # Calculate statistics (excluding transfers for consistency)
         total_income = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.user_id == g.user.id,
-            Transaction.category.has(Category.type == 'income')
+            Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer'))
         ).scalar() or 0
         
         total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.user_id == g.user.id,
-            Transaction.category.has(Category.type == 'expense')
+            Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer'))
         ).scalar() or 0
         
         total_balance = total_income - total_expenses
@@ -93,7 +95,7 @@ def api_stats():
         ).filter(
             and_(
                 Transaction.user_id == g.user.id,
-                Transaction.category.has(Category.type == 'income'),
+                Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
                 Transaction.date >= start_date
             )
         ).scalar()
@@ -103,7 +105,7 @@ def api_stats():
         ).filter(
             and_(
                 Transaction.user_id == g.user.id,
-                Transaction.category.has(Category.type == 'expense'),
+                Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
                 Transaction.date >= start_date
             )
         ).scalar()
@@ -179,7 +181,7 @@ def api_category_breakdown():
         start_date = datetime.now() - timedelta(days=days)
         transaction_type = request.args.get('type', 'expense')  # 'income' or 'expense'
         
-        # Get category breakdown
+        # Get category breakdown (excluding transfers)
         categories = db.session.query(
             Category.name,
             func.sum(Transaction.amount).label('total')
@@ -187,6 +189,7 @@ def api_category_breakdown():
             and_(
                 Transaction.user_id == g.user.id,
                 Category.type == transaction_type,
+                Category.name != 'Transfer',  # Exclude transfers
                 Transaction.date >= start_date
             )
         ).group_by(Category.id, Category.name).order_by(
@@ -243,13 +246,13 @@ def api_monthly_trend():
             else:
                 month_end = datetime(year, month + 1, 1) - timedelta(days=1)
             
-            # Get income and expenses for this month
+            # Get income and expenses for this month (excluding transfers)
             month_income = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
                 and_(
                     Transaction.user_id == g.user.id,
-                    Transaction.category.has(Category.type == 'income'),
+                    Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
                     Transaction.date >= month_start,
                     Transaction.date <= month_end
                 )
@@ -260,7 +263,7 @@ def api_monthly_trend():
             ).filter(
                 and_(
                     Transaction.user_id == g.user.id,
-                    Transaction.category.has(Category.type == 'expense'),
+                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
                     Transaction.date >= month_start,
                     Transaction.date <= month_end
                 )
@@ -315,25 +318,25 @@ def api_daily_activity():
             day_start = current_date
             day_end = current_date.replace(hour=23, minute=59, second=59)
             
-            # Calculate daily income
+            # Calculate daily income (excluding transfers)
             daily_income = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
                 and_(
                     Transaction.user_id == g.user.id,
-                    Transaction.category.has(Category.type == 'income'),
+                    Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
                     Transaction.date >= day_start,
                     Transaction.date <= day_end
                 )
             ).scalar()
             
-            # Calculate daily expenses
+            # Calculate daily expenses (excluding transfers)
             daily_expenses = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
                 and_(
                     Transaction.user_id == g.user.id,
-                    Transaction.category.has(Category.type == 'expense'),
+                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
                     Transaction.date >= day_start,
                     Transaction.date <= day_end
                 )
@@ -379,13 +382,13 @@ def api_weekly_expenses():
             day_date = start_of_week + timedelta(days=i)
             day_end = day_date.replace(hour=23, minute=59, second=59)
             
-            # Get expenses for this day
+            # Get expenses for this day (excluding transfers)
             daily_expenses = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
                 and_(
                     Transaction.user_id == g.user.id,
-                    Transaction.category.has(Category.type == 'expense'),
+                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
                     Transaction.date >= day_date,
                     Transaction.date <= day_end
                 )

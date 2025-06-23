@@ -157,12 +157,10 @@
                       data-is-transfer="{% if transaction.category and transaction.category.name == 'Transfer' %}true{% else %}false{% endif %}">
                     <td>
                       <div>{{ transaction.date.strftime('%m/%d/%Y') }}</div>
-                      <small class="text-muted">{{ transaction.date.strftime('%I:%M %p') }}</small>
                     </td>
                     <td>
                       <div>{{ transaction.description or 'No description' }}</div>
                       <div class="d-flex align-items-center">
-                        <small class="text-muted">#{{ transaction.id }}</small>
                         {% if transaction.category and transaction.category.name == 'Transfer' %}
                           <span class="badge bg-info ms-2" title="This transaction is part of a Quick Transfer">
                             <i class="fas fa-exchange-alt me-1"></i>Transfer
@@ -171,7 +169,7 @@
                       </div>
                     </td>
                     <td>
-                      <div>{{ transaction.category.name }}</div>
+                      <div>{{ transaction.category.unicode_emoji }} {{ transaction.category.name }}</div>
                     </td>
                     <td>{{ transaction.account.name }}</td>
                     <td class="text-end">

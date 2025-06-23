@@ -196,12 +196,22 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Handle edit category buttons
+        // Handle edit category buttons - check both button and icon clicks
+        let editButton = null;
         if (e.target.hasAttribute('data-action') && e.target.getAttribute('data-action') === 'edit') {
-            const categoryId = e.target.getAttribute('data-category-id');
-            const categoryName = e.target.getAttribute('data-category-name');
-            const categoryType = e.target.getAttribute('data-category-type');
-            const categoryEmoji = e.target.getAttribute('data-category-emoji');
+            editButton = e.target;
+        } else if (e.target.closest('[data-action="edit"]')) {
+            editButton = e.target.closest('[data-action="edit"]');
+        }
+        
+        if (editButton) {
+            const categoryId = editButton.getAttribute('data-category-id');
+            const categoryName = editButton.getAttribute('data-category-name');
+            const categoryType = editButton.getAttribute('data-category-type');
+            const categoryEmoji = editButton.getAttribute('data-category-emoji');
+            
+            // Clear any previous errors first
+            clearFieldErrors(editCategoryForm);
             
             // Populate edit form
             document.getElementById('editCategoryId').value = categoryId;
@@ -210,6 +220,8 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('editCategoryEmoji').value = categoryEmoji;
             
             currentCategoryId = categoryId;
+            
+            console.log('Edit button clicked - Category:', categoryName, 'Type:', categoryType, 'ID:', categoryId);
         }
     });
     
@@ -392,6 +404,25 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Reset emoji placeholder
         document.getElementById('addCategoryEmoji').placeholder = '💵';
+    });
+    
+    // Reset Edit Category form when modal is shown
+    editCategoryModal.addEventListener('show.bs.modal', function () {
+        // Clear any previous errors first
+        clearFieldErrors(editCategoryForm);
+        
+        // Note: We don't reset the form here because the data should already be populated
+        // by the click event handler. This just ensures clean state.
+        console.log('Edit modal opened');
+    });
+    
+    // Clean up Edit Category form when modal is hidden
+    editCategoryModal.addEventListener('hidden.bs.modal', function () {
+        // Clear the form when modal is closed to prevent stale data
+        editCategoryForm.reset();
+        currentCategoryId = null;
+        clearFieldErrors(editCategoryForm);
+        console.log('Edit modal closed and cleaned');
     });
     
     // Initialize Top Expenses Chart

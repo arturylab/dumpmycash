@@ -164,6 +164,123 @@ class TestAccountAuthenticated:
         
         assert response.status_code == 200
         assert b'Account not found.' in response.data
+    
+    def test_account_balance_adjustment_creates_transaction(self, client, app):
+        """Test that editing account balance creates a balance adjustment transaction."""
+        # Create account with initial balance
+        response = client.post('/account/create', data={
+            'name': 'Test Account',
+            'balance': '1000.00',
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        
+        with app.app_context():
+            account = Account.query.filter_by(name='Test Account').first()
+            assert account is not None
+            initial_balance = account.balance
+            
+            # Verify initial deposit transaction exists
+            initial_transactions = Transaction.query.filter_by(account_id=account.id).count()
+            assert initial_transactions == 1  # Initial deposit transaction
+        
+        # Edit account balance to a higher amount (increase)
+        new_balance = 1500.00
+        response = client.post(f'/account/edit/{account.id}', data={
+            'name': 'Test Account',
+            'balance': str(new_balance),
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        assert b'Balance adjustment transaction created' in response.data
+        
+        with app.app_context():
+            # Verify account balance was updated
+            updated_account = Account.query.get(account.id)
+            assert updated_account.balance == new_balance
+            
+            # Verify adjustment transaction was created
+            all_transactions = Transaction.query.filter_by(account_id=account.id).all()
+            assert len(all_transactions) == 2  # Initial deposit + balance adjustment
+            
+            # Find the adjustment transaction
+            adjustment_transaction = [tx for tx in all_transactions if 'adjustment' in tx.description.lower()][0]
+            assert adjustment_transaction.amount == abs(new_balance - initial_balance)
+            assert 'Manual balance adjustment' in adjustment_transaction.description
+            assert adjustment_transaction.category.name == 'Balance Adjustment (Increase)'
+            assert adjustment_transaction.category.type == 'income'
+            assert adjustment_transaction.category.unicode_emoji == '📈'
+    
+    def test_account_balance_decrease_creates_expense_transaction(self, client, app):
+        """Test that decreasing account balance creates an expense transaction."""
+        # Create account with initial balance
+        response = client.post('/account/create', data={
+            'name': 'Test Account Decrease',
+            'balance': '1000.00',
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        with app.app_context():
+            account = Account.query.filter_by(name='Test Account Decrease').first()
+            initial_balance = account.balance
+        
+        # Edit account balance to a lower amount (decrease)
+        new_balance = 750.00
+        response = client.post(f'/account/edit/{account.id}', data={
+            'name': 'Test Account Decrease',
+            'balance': str(new_balance),
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        
+        with app.app_context():
+            # Verify account balance was updated
+            updated_account = Account.query.get(account.id)
+            assert updated_account.balance == new_balance
+            
+            # Find the adjustment transaction
+            adjustment_transactions = Transaction.query.filter(
+                Transaction.account_id == account.id,
+                Transaction.description.like('%adjustment%')
+            ).all()
+            
+            assert len(adjustment_transactions) == 1
+            adjustment_transaction = adjustment_transactions[0]
+            assert adjustment_transaction.amount == abs(new_balance - initial_balance)
+            assert adjustment_transaction.category.name == 'Balance Adjustment (Decrease)'
+            assert adjustment_transaction.category.type == 'expense'
+            assert adjustment_transaction.category.unicode_emoji == '📉'
+    
+    def test_account_edit_without_balance_change_no_transaction(self, client, app):
+        """Test that editing account without changing balance doesn't create adjustment transaction."""
+        # Create account
+        response = client.post('/account/create', data={
+            'name': 'Test Account No Change',
+            'balance': '500.00',
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        with app.app_context():
+            account = Account.query.filter_by(name='Test Account No Change').first()
+            initial_transaction_count = Transaction.query.filter_by(account_id=account.id).count()
+        
+        # Edit account name and color only, keep same balance
+        response = client.post(f'/account/edit/{account.id}', data={
+            'name': 'Renamed Account',
+            'balance': '500.00',
+            'color': '#36A2EB'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        assert b'Balance adjustment transaction created' not in response.data
+        
+        with app.app_context():
+            # Verify no new transactions were created
+            final_transaction_count = Transaction.query.filter_by(account_id=account.id).count()
+            assert final_transaction_count == initial_transaction_count
 
 
 class TestAccountAPI:
@@ -544,7 +661,7 @@ class TestAccountTransferAJAX:
             password="Password123!"
         )
         auth_client.login(email="ajax@example.com", password="Password123!")
-    
+
     def test_transfer_ajax_success(self, client, app):
         """Test successful transfer via AJAX."""
         # Create test accounts
@@ -556,9 +673,9 @@ class TestAccountTransferAJAX:
             db.session.commit()
             account1_id = account1.id
             account2_id = account2.id
-        
+
         # Make AJAX transfer
-        response = client.post('/account/transfer', 
+        response = client.post('/account/transfer',
             data={
                 'from_account': account1_id,
                 'to_account': account2_id,
@@ -567,36 +684,45 @@ class TestAccountTransferAJAX:
             },
             headers={'X-Requested-With': 'XMLHttpRequest'}
         )
-        
+
         assert response.status_code == 200
         data = response.get_json()
         assert data['status'] == 'success'
         assert 'Successfully transferred' in data['message']
-        
+
         # Verify balances were updated
         with app.app_context():
             updated_account1 = Account.query.get(account1_id)
             updated_account2 = Account.query.get(account2_id)
             assert updated_account1.balance == 900.0
             assert updated_account2.balance == 600.0
-            
-            # Verify transaction types
+
+            # Verify that NO transfer transactions were created (transfers don't create transactions anymore)
             expense_transactions = Transaction.query.join(Category).filter(
                 Transaction.account_id == account1_id,
                 Category.type == 'expense',
                 Transaction.description.like('Transfer%')
             ).all()
-            
+
             income_transactions = Transaction.query.join(Category).filter(
                 Transaction.account_id == account2_id,
                 Category.type == 'income',
                 Transaction.description.like('Transfer%')
             ).all()
+
+            # Transfers should NOT create transactions anymore
+            assert len(expense_transactions) == 0
+            assert len(income_transactions) == 0
             
-            assert len(expense_transactions) == 1
-            assert len(income_transactions) == 1
-            assert expense_transactions[0].amount == 100.0
-            assert income_transactions[0].amount == 100.0
+            # Verify that a Transfer record was created instead
+            from app.models import Transfer
+            transfer_record = Transfer.query.filter_by(
+                from_account_id=account1_id,
+                to_account_id=account2_id,
+                amount=100.0
+            ).first()
+            assert transfer_record is not None
+            assert transfer_record.description == 'AJAX transfer'
     
     def test_transfer_ajax_error(self, client, app):
         """Test transfer error via AJAX."""
@@ -810,15 +936,18 @@ class TestAccountMonthlyIncomeCalculation:
         """Test that monthly income calculation handles missing categories properly."""
         from app.models import Category
         
-        # Create test account
+        # Create test account with 0 balance to avoid initial deposit transaction
         client.post('/account/create', data={
             'name': 'Test Account',
-            'balance': '1000.00',
+            'balance': '0.00',
             'color': '#FF6384'
         })
         
         with app.app_context():
             account = Account.query.filter_by(name='Test Account').first()
+            
+            # Update account balance manually to avoid initial deposit transaction
+            account.balance = 1000.0
             
             # Create income category
             income_category = Category(
@@ -873,15 +1002,18 @@ class TestAccountMonthlyIncomeCalculation:
         """Test that calculation properly separates income and expense categories."""
         from app.models import Category
         
-        # Create test account
+        # Create test account with 0 balance to avoid initial deposit transaction
         client.post('/account/create', data={
             'name': 'Test Account 2',
-            'balance': '500.00',
+            'balance': '0.00',
             'color': '#36A2EB'
         })
         
         with app.app_context():
             account = Account.query.filter_by(name='Test Account 2').first()
+            
+            # Update account balance manually to avoid initial deposit transaction
+            account.balance = 500.0
             
             # Create mixed categories
             income_category = Category(
@@ -929,3 +1061,133 @@ class TestAccountMonthlyIncomeCalculation:
         assert data['monthly_income'] == 1500.0
         assert data['monthly_expenses'] == 800.0
         assert data['total_balance'] == 500.0
+
+
+class TestAccountInitialDeposit:
+    """Test account initial deposit functionality."""
+    
+    @pytest.fixture(autouse=True)  
+    def setup_user(self, auth_client):
+        """Create and login a user for each test in this class."""
+        self.user = auth_client.create_user(
+            username="initialuser",
+            email="initial@example.com", 
+            password="Password123!"
+        )
+        auth_client.login(email="initial@example.com", password="Password123!")
+    
+    def test_account_create_with_zero_balance_no_transaction(self, client, app):
+        """Test that creating an account with balance 0 does not create an initial deposit transaction."""
+        # Create account with zero balance
+        response = client.post('/account/create', data={
+            'name': 'Zero Balance Account',
+            'balance': '0.00',
+            'color': '#FF6384'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        assert b'created successfully!' in response.data
+        
+        with app.app_context():
+            account = Account.query.filter_by(name='Zero Balance Account').first()
+            assert account is not None
+            assert account.balance == 0.0
+            
+            # Verify no transactions were created
+            transactions = Transaction.query.filter_by(account_id=account.id).all()
+            assert len(transactions) == 0
+    
+    def test_account_create_with_positive_balance_creates_initial_deposit(self, client, app):
+        """Test that creating an account with positive balance creates an initial deposit transaction."""
+        initial_balance = 1500.0
+        
+        # Create account with positive balance
+        response = client.post('/account/create', data={
+            'name': 'Savings Account',
+            'balance': str(initial_balance),
+            'color': '#36A2EB'
+        }, follow_redirects=True)
+        
+        assert response.status_code == 200
+        assert b'created successfully!' in response.data
+        
+        with app.app_context():
+            account = Account.query.filter_by(name='Savings Account').first()
+            assert account is not None
+            assert account.balance == initial_balance
+            
+            # Verify initial deposit transaction was created
+            transactions = Transaction.query.filter_by(account_id=account.id).all()
+            assert len(transactions) == 1
+            
+            transaction = transactions[0]
+            assert transaction.amount == initial_balance
+            assert 'Initial deposit' in transaction.description
+            assert transaction.user_id == self.user.id
+            
+            # Verify category is correct
+            category = transaction.category
+            assert category.name == 'Initial Deposit'
+            assert category.type == 'income'
+            assert category.unicode_emoji == '💰'
+    
+    def test_initial_deposit_category_reused_for_multiple_accounts(self, client, app):
+        """Test that the Initial Deposit category is reused for multiple accounts."""
+        # Create first account
+        client.post('/account/create', data={
+            'name': 'Account One',
+            'balance': '1000.00',
+            'color': '#FF6384'
+        })
+        
+        # Create second account
+        client.post('/account/create', data={
+            'name': 'Account Two',
+            'balance': '500.00',
+            'color': '#36A2EB'
+        })
+        
+        with app.app_context():
+            # Check that only one Initial Deposit category was created
+            initial_categories = Category.query.filter_by(
+                name='Initial Deposit',
+                user_id=self.user.id
+            ).all()
+            
+            assert len(initial_categories) == 1
+            category = initial_categories[0]
+            
+            # Check that both accounts have transactions with this category
+            transactions = Transaction.query.filter_by(
+                category_id=category.id,
+                user_id=self.user.id
+            ).all()
+            
+            assert len(transactions) == 2
+            
+            # Verify amounts
+            amounts = [tx.amount for tx in transactions]
+            assert 1000.0 in amounts
+            assert 500.0 in amounts
+    
+    def test_initial_deposit_included_in_income_statistics(self, client, app):
+        """Test that initial deposit transactions are included in income statistics."""
+        initial_balance = 2000.0
+        
+        # Create account with initial balance
+        client.post('/account/create', data={
+            'name': 'Test Account',
+            'balance': str(initial_balance),
+            'color': '#FF6384'
+        })
+        
+        # Get account summary
+        response = client.get('/account/api/summary')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        
+        # Initial deposit should be included in monthly income
+        assert data['monthly_income'] == initial_balance
+        assert data['monthly_expenses'] == 0.0
+        assert data['total_balance'] == initial_balance

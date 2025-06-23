@@ -23,11 +23,12 @@ def index():
     current_month = datetime.now().replace(day=1)
     next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
     
-    # Get transactions for current month with proper joins
+    # Get transactions for current month with proper joins - excluir transferencias
     monthly_transactions = db.session.query(Transaction).join(Account).join(Category).filter(
         Account.user_id == g.user.id,
         Transaction.date >= current_month,
-        Transaction.date < next_month
+        Transaction.date < next_month,
+        Category.name != 'Transfer'  # Excluir categorías de transferencia
     ).all()
     
     monthly_income = 0.0
@@ -69,19 +70,56 @@ def create():
             flash('Invalid balance amount.', 'error')
             return redirect(url_for('account.index'))
         
-        # Create new account
-        account = Account(
-            name=name,
-            balance=balance,
-            color=color,
-            user_id=g.user.id
-        )
-        
         try:
+            # Create new account
+            account = Account(
+                name=name,
+                balance=balance,
+                color=color,
+                user_id=g.user.id
+            )
+            
             db.session.add(account)
+            db.session.flush()  # Get the account ID
+            
+            # If there's an initial balance > 0, create an initial deposit transaction
+            if balance > 0:
+                # Create or find the "Initial Deposit" category
+                initial_deposit_category = Category.query.filter_by(
+                    name='Initial Deposit',
+                    type='income',
+                    user_id=g.user.id
+                ).first()
+                
+                if not initial_deposit_category:
+                    initial_deposit_category = Category(
+                        name='Initial Deposit',
+                        type='income',
+                        unicode_emoji='💰',  # Money bag emoji
+                        user_id=g.user.id
+                    )
+                    db.session.add(initial_deposit_category)
+                    db.session.flush()  # Get the category ID
+                
+                # Create the initial deposit transaction
+                initial_transaction = Transaction(
+                    amount=balance,
+                    description=f'Initial deposit for {name}',
+                    account_id=account.id,
+                    category_id=initial_deposit_category.id,
+                    user_id=g.user.id,
+                    date=datetime.now()
+                )
+                
+                db.session.add(initial_transaction)
+            
             db.session.commit()
             flash(f'Account "{name}" created successfully!', 'success')
+            
         except IntegrityError:
+            db.session.rollback()
+            flash('Error creating account. Please try again.', 'error')
+        except Exception as e:
             db.session.rollback()
             flash('Error creating account. Please try again.', 'error')
         
@@ -112,20 +150,77 @@ def edit(account_id):
             return redirect(url_for('account.index'))
         
         try:
-            balance = float(balance) if balance else account.balance
+            new_balance = float(balance) if balance else account.balance
         except ValueError:
             flash('Invalid balance amount.', 'error')
             return redirect(url_for('account.index'))
         
+        # Store original balance for comparison
+        original_balance = account.balance
+        
         # Update account
         account.name = name
-        account.balance = balance
         account.color = color
         
         try:
+            # If balance changed, create a balance adjustment transaction
+            if new_balance != original_balance:
+                balance_difference = new_balance - original_balance
+                
+                # Determine category name and type based on adjustment direction
+                if balance_difference > 0:
+                    category_name = 'Balance Adjustment (Increase)'
+                    category_type = 'income'
+                    emoji = '📈'  # Chart increasing
+                else:
+                    category_name = 'Balance Adjustment (Decrease)'
+                    category_type = 'expense'
+                    emoji = '📉'  # Chart decreasing
+                
+                # Create or find the appropriate balance adjustment category
+                adjustment_category = Category.query.filter_by(
+                    name=category_name,
+                    type=category_type,
+                    user_id=g.user.id
+                ).first()
+                
+                if not adjustment_category:
+                    adjustment_category = Category(
+                        name=category_name,
+                        type=category_type,
+                        unicode_emoji=emoji,
+                        user_id=g.user.id
+                    )
+                    db.session.add(adjustment_category)
+                    db.session.flush()  # Get the category ID
+                
+                # Create the balance adjustment transaction
+                adjustment_description = f'Manual balance adjustment: ${original_balance:.2f} → ${new_balance:.2f}'
+                adjustment_transaction = Transaction(
+                    amount=abs(balance_difference),  # Always store positive amount
+                    description=adjustment_description,
+                    account_id=account.id,
+                    category_id=adjustment_category.id,
+                    user_id=g.user.id,
+                    date=datetime.now()
+                )
+                
+                db.session.add(adjustment_transaction)
+            
+            # Update the account balance
+            account.balance = new_balance
+            
             db.session.commit()
-            flash(f'Account "{name}" updated successfully!', 'success')
+            
+            if new_balance != original_balance:
+                flash(f'Account "{name}" updated successfully! Balance adjustment transaction created.', 'success')
+            else:
+                flash(f'Account "{name}" updated successfully!', 'success')
+                
         except IntegrityError:
+            db.session.rollback()
+            flash('Error updating account. Please try again.', 'error')
+        except Exception as e:
             db.session.rollback()
             flash('Error updating account. Please try again.', 'error')
         
@@ -236,78 +331,19 @@ def transfer():
         return handle_error('Insufficient balance in source account.')
     
     try:
-        # Create transfer categories if they don't exist
-        transfer_expense_category = Category.query.filter_by(
-            name='Transfer', 
-            type='expense', 
-            user_id=g.user.id
-        ).first()
-        
-        if not transfer_expense_category:
-            transfer_expense_category = Category(
-                name='Transfer',
-                type='expense',
-                unicode_emoji='🔄',
-                user_id=g.user.id
-            )
-            db.session.add(transfer_expense_category)
-            db.session.flush()  # Get the ID
-        
-        transfer_income_category = Category.query.filter_by(
-            name='Transfer', 
-            type='income', 
-            user_id=g.user.id
-        ).first()
-        
-        if not transfer_income_category:
-            transfer_income_category = Category(
-                name='Transfer',
-                type='income',
-                unicode_emoji='🔄',
-                user_id=g.user.id
-            )
-            db.session.add(transfer_income_category)
-            db.session.flush()  # Get the ID
-        
-        # Create transaction records for tracking
-        # Outgoing transaction (expense from source account)
-        out_transaction = Transaction(
-            amount=amount,
-            description=f"Transfer - from {from_account.name} to {to_account.name}",
-            account_id=from_account.id,
-            category_id=transfer_expense_category.id,
-            user_id=g.user.id,
-            date=datetime.now()
-        )
-        
-        # Incoming transaction (income to destination account)
-        in_transaction = Transaction(
-            amount=amount,
-            description=f"Transfer - from {from_account.name} to {to_account.name}",
-            account_id=to_account.id,
-            category_id=transfer_income_category.id,
-            user_id=g.user.id,
-            date=datetime.now()
-        )
-        
-        db.session.add(out_transaction)
-        db.session.add(in_transaction)
-        db.session.flush()  # Get transaction IDs
-        
-        # Create the Transfer record
+        # Create the Transfer record (no transactions in Transaction table)
         transfer_record = Transfer(
             amount=amount,
             description=description,
             from_account_id=from_account.id,
             to_account_id=to_account.id,
             user_id=g.user.id,
-            from_transaction_id=out_transaction.id,
-            to_transaction_id=in_transaction.id
+            date=datetime.now()
         )
         
         db.session.add(transfer_record)
         
-        # Update account balances
+        # Update account balances directly (no transaction records)
         from_account.balance -= amount
         to_account.balance += amount
         
@@ -354,11 +390,12 @@ def api_summary():
     current_month = datetime.now().replace(day=1)
     next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
     
-    # Get transactions for current month with proper joins
+    # Get transactions for current month with proper joins - excluir transferencias
     monthly_transactions = db.session.query(Transaction).join(Account).join(Category).filter(
         Account.user_id == g.user.id,
         Transaction.date >= current_month,
-        Transaction.date < next_month
+        Transaction.date < next_month,
+        Category.name != 'Transfer'  # Excluir categorías de transferencia
     ).all()
     
     monthly_income = 0.0

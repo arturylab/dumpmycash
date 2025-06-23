@@ -104,8 +104,11 @@ def list_transactions():
     page = request.args.get('page', 1, type=int)
     per_page = 20
     
-    # Construir query base
-    query = Transaction.query.filter_by(user_id=g.user.id)
+    # Construir query base - excluir categorías de Transfer
+    query = Transaction.query.filter(
+        Transaction.user_id == g.user.id,
+        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+    )
     
     # Aplicar filtros
     if account_id:
@@ -149,8 +152,11 @@ def list_transactions():
     accounts = Account.query.filter_by(user_id=g.user.id).all()
     categories = Category.query.filter_by(user_id=g.user.id).all()
     
-    # Calcular estadísticas basadas en el filtro aplicado
-    stats_query = Transaction.query.filter_by(user_id=g.user.id)
+    # Calcular estadísticas basadas en el filtro aplicado - excluir transferencias
+    stats_query = Transaction.query.filter(
+        Transaction.user_id == g.user.id,
+        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+    )
     if time_filter:
         if time_filter != 'all':
             start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
@@ -228,8 +234,11 @@ def api_list_transactions():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    # Construir query base
-    query = Transaction.query.filter_by(user_id=g.user.id)
+    # Construir query base - excluir categorías de Transfer
+    query = Transaction.query.filter(
+        Transaction.user_id == g.user.id,
+        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+    )
     
     # Aplicar filtros (mismo código que en list_transactions)
     if account_id:
@@ -558,18 +567,21 @@ def api_transaction_statistics():
     total_income = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
-        Transaction.category.has(Category.type == 'income')
+        Transaction.category.has(Category.type == 'income'),
+        Transaction.category.has(Category.name != 'Transfer')  # Excluir transferencias
     ).scalar() or 0
     
     total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
-        Transaction.category.has(Category.type == 'expense')
+        Transaction.category.has(Category.type == 'expense'),
+        Transaction.category.has(Category.name != 'Transfer')  # Excluir transferencias
     ).scalar() or 0
     
     transaction_count = Transaction.query.filter(
         Transaction.user_id == g.user.id,
-        Transaction.date >= start_date
+        Transaction.date >= start_date,
+        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
     ).count()
     
     # Gastos por categoría
@@ -580,7 +592,8 @@ def api_transaction_statistics():
     ).join(Transaction).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
-        Category.type == 'expense'
+        Category.type == 'expense',
+        Category.name != 'Transfer'  # Excluir categorías de transferencia
     ).group_by(Category.id, Category.name, Category.unicode_emoji).all()
     
     # Ingresos por categoría
@@ -591,7 +604,8 @@ def api_transaction_statistics():
     ).join(Transaction).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
-        Category.type == 'income'
+        Category.type == 'income',
+        Category.name != 'Transfer'  # Excluir categorías de transferencia
     ).group_by(Category.id, Category.name, Category.unicode_emoji).all()
     
     return jsonify({
@@ -676,8 +690,11 @@ def export_csv():
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         
-        # Build query with same logic as list_transactions
-        query = Transaction.query.filter_by(user_id=g.user.id)
+        # Build query with same logic as list_transactions - excluir transferencias
+        query = Transaction.query.filter(
+            Transaction.user_id == g.user.id,
+            ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+        )
         
         # Apply filters
         if account_id:
