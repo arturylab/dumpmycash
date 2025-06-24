@@ -1,138 +1,335 @@
 {% extends "base.html" %}
 
-{% block title %}Profile - DumpMyMoney{% endblock %}
+{% block title %}Profile - DumpMyCash{% endblock %}
 
 {% block content %}
-<div class="row">
-  <div class="col-12">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <button type="button" class="btn btn-primary">Edit Profile</button>
+<div class="container-fluid">
+  <!-- Flash Messages -->
+  <div id="flash-container"></div>
+
+  <!-- Page Header -->
+  <div class="row g-4 mb-4">
+    <div class="col-12">
+      <div class="card minimal-card">
+        <div class="card-body text-center">
+          <div class="d-flex flex-column align-items-center">
+            <div class="mb-3">
+              <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                <i class="fas fa-user fa-3x text-white"></i>
+              </div>
+            </div>
+            <h3 class="mb-1" id="displayName">{{ g.user.name if g.user and g.user.name else (g.user.username if g.user else 'Guest User') }}</h3>
+            <p class="text-muted mb-3">{{ g.user.email if g.user else 'guest@example.com' }}</p>
+            <small class="text-muted">Member since {{ now().strftime('%B %Y') }}</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Statistics -->
+  <div class="row g-4 mb-4">
+    <div class="col-12">
+      <div class="card minimal-card">
+        <div class="card-body">
+          <h5 class="card-title text-center mb-4 text-muted">Account Statistics</h5>
+          <div class="stats-grid">
+            <div class="text-center">
+              <h4 class="text-primary" id="totalTransactions">{{ total_transactions }}</h4>
+              <p class="text-muted mb-0">Total Transactions</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-success" id="categoriesCreated">{{ categories_created }}</h4>
+              <p class="text-muted mb-0">Categories Created</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-info" id="accountsManaged">{{ accounts_managed }}</h4>
+              <p class="text-muted mb-0">Accounts Managed</p>
+            </div>
+            <div class="text-center">
+              <h4 class="text-warning" id="daysActive">{{ days_active }}</h4>
+              <p class="text-muted mb-0">Days Active</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Settings -->
+  <div class="row g-4 mb-4">
+    <div class="col-lg-6">
+      <div class="card minimal-card">
+        <div class="card-body">
+          <h5 class="card-title text-muted mb-4">
+            <i class="fas fa-user-circle me-2"></i>Personal Information
+          </h5>
+          <form id="profileForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            
+            <div class="mb-3">
+              <label for="email" class="form-label">Email Address</label>
+              <input type="email" class="form-control" id="email" value="{{ g.user.email if g.user else '' }}">
+              <div class="form-text">
+                <i class="fas fa-info-circle me-1"></i>Your email address for account notifications
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="username" class="form-label">Username</label>
+              <input type="text" class="form-control" id="username" value="{{ g.user.username if g.user else '' }}" readonly disabled>
+              <div class="form-text">
+                <i class="fas fa-lock me-1"></i>Username cannot be changed
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="firstName" class="form-label">First Name</label>
+                <input type="text" class="form-control" id="firstName" placeholder="Enter your first name" value="{{ g.user.name.split(' ')[0] if g.user and g.user.name else '' }}">
+              </div>
+              <div class="col-md-6 mb-3">
+                <label for="lastName" class="form-label">Last Name</label>
+                <input type="text" class="form-control" id="lastName" placeholder="Enter your last name" value="{{ g.user.name.split(' ')[1:] | join(' ') if g.user and g.user.name and g.user.name.split(' ')|length > 1 else '' }}">
+              </div>
+            </div>
+            
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Update Profile
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card minimal-card">
+        <div class="card-body">
+          <h5 class="card-title text-muted mb-4">
+            <i class="fas fa-key me-2"></i>Change Password
+          </h5>
+          <form id="passwordForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            
+            <div class="mb-3">
+              <label for="currentPassword" class="form-label">Current Password</label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="currentPassword" required>
+                <button class="btn btn-outline-secondary" type="button" id="toggleCurrentPassword">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="newPassword" class="form-label">New Password</label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="newPassword" required>
+                <button class="btn btn-outline-secondary" type="button" id="toggleNewPassword">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+              <div class="form-text">
+                <i class="fas fa-info-circle me-1"></i>Password must contain: At least 8 characters. At least one letter (a-z, A-Z). At least one special character (e.g., !@#$).
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <label for="confirmPassword" class="form-label">Confirm New Password</label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="confirmPassword" required>
+                <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            
+            <div class="d-grid">
+              <button type="submit" class="btn btn-warning">
+                <i class="fas fa-lock me-2"></i>Change Password
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="row g-4 mb-4">
+    <div class="col-12">
+      <div class="card minimal-card">
+        <div class="card-body text-center">
+          <h5 class="card-title text-muted mb-3">Account Actions</h5>
+          <div class="d-flex justify-content-center gap-3 flex-wrap mb-3">
+            <a href="{{ url_for('profile.export_data') }}" class="btn btn-outline-primary">
+              <i class="fas fa-download me-2"></i>Backup Data
+            </a>
+            <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#restoreDataModal">
+              <i class="fas fa-database me-2"></i>Restore Data
+            </button>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteDataModal">
+              <i class="fas fa-table me-2"></i>Delete All Data
+            </button>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+              <i class="fas fa-user-times me-2"></i>Delete Account
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="row">
-  <div class="col-md-4 mb-4">
-    <div class="card">
-      <div class="card-body text-center">
-        <div class="mb-3">
-          <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-            <i class="fas fa-user fa-2x text-white"></i>
+<!-- Restore Data Modal -->
+<div class="modal fade" id="restoreDataModal" tabindex="-1" aria-labelledby="restoreDataModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-info" id="restoreDataModalLabel">
+          <i class="fas fa-database me-2"></i>Restore Data
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{{ url_for('profile.restore_data') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="modal-body">
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Important!</strong> This will restore your accounts, categories, and transactions from a backup file. Existing data with the same names will be preserved.
+          </div>
+          
+          <div class="mb-3">
+            <label for="backupFile" class="form-label">Select Backup File</label>
+            <input type="file" class="form-control" id="backupFile" name="backup_file" accept=".json" required>
+            <div class="form-text">
+              <i class="fas fa-file-code me-1"></i>Only JSON backup files are supported
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="confirmRestore" required>
+              <label class="form-check-label" for="confirmRestore">
+                I understand that this action will add data to my account from the backup file
+              </label>
+            </div>
           </div>
         </div>
-        <h5 class="card-title">{{ g.user.username if g.user else 'Guest User' }}</h5>
-        <p class="card-text text-muted">{{ g.user.email if g.user else 'guest@example.com' }}</p>
-        <button type="button" class="btn btn-outline-primary btn-sm">Change Avatar</button>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="card-header">
-        <h6 class="card-title mb-0">Account Statistics</h6>
-      </div>
-      <div class="card-body">
-        <div class="row text-center">
-          <div class="col-6">
-            <h5 class="text-primary">0</h5>
-            <small class="text-muted">Transactions</small>
-          </div>
-          <div class="col-6">
-            <h5 class="text-success">0</h5>
-            <small class="text-muted">Categories</small>
-          </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info" id="restoreBtn" disabled>
+            <i class="fas fa-upload me-2"></i>Restore Data
+          </button>
         </div>
-        <hr>
-        <div class="text-center">
-          <small class="text-muted">Member since</small>
-          <div class="fw-bold">{{ now().strftime('%B %Y') }}</div>
-        </div>
-      </div>
+      </form>
     </div>
   </div>
-  
-  <div class="col-md-8">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h6 class="card-title mb-0">Personal Information</h6>
+</div>
+
+<!-- Delete All Data Modal -->
+<div class="modal fade" id="deleteDataModal" tabindex="-1" aria-labelledby="deleteDataModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-danger" id="deleteDataModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i>Delete All Data
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="card-body">
-        <form>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-          <div class="row mb-3">
-            <div class="col-md-6">
-              <label for="firstName" class="form-label">First Name</label>
-              <input type="text" class="form-control" id="firstName" value="">
-            </div>
-            <div class="col-md-6">
-              <label for="lastName" class="form-label">Last Name</label>
-              <input type="text" class="form-control" id="lastName" value="">
-            </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <strong>Warning!</strong> This will permanently delete all your financial data including accounts, categories, and transactions. Your user account will remain active.
+        </div>
+        
+        <div id="deleteDataStep1">
+          <p><strong>Step 1:</strong> Please type <strong>DELETE ALL DATA</strong> to confirm:</p>
+          <input type="text" class="form-control mb-3" id="deleteDataConfirmation1" placeholder="Type DELETE ALL DATA to confirm">
+          <div class="d-grid">
+            <button type="button" class="btn btn-warning" id="deleteDataStep1Btn" disabled>
+              <i class="fas fa-arrow-right me-2"></i>Continue to Final Confirmation
+            </button>
           </div>
-          
-          <div class="mb-3">
-            <label for="email" class="form-label">Email Address</label>
-            <input type="email" class="form-control" id="email" value="{{ g.user.email if g.user else '' }}" readonly>
-            <div class="form-text">Contact support to change your email address.</div>
+        </div>
+        
+        <div id="deleteDataStep2" style="display: none;">
+          <div class="alert alert-danger">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            <strong>Final Warning!</strong> This action cannot be undone. All your financial data will be permanently lost.
           </div>
-          
-          <div class="mb-3">
-            <label for="username" class="form-label">Username</label>
-            <input type="text" class="form-control" id="username" value="{{ g.user.username if g.user else '' }}" readonly>
-            <div class="form-text">Username cannot be changed.</div>
+          <p><strong>Step 2:</strong> Type <strong>CONFIRM DELETE</strong> to proceed:</p>
+          <input type="text" class="form-control mb-3" id="deleteDataConfirmation2" placeholder="Type CONFIRM DELETE">
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-danger" id="confirmDeleteDataBtn" disabled>
+              <i class="fas fa-trash me-2"></i>Delete All My Data
+            </button>
+            <button type="button" class="btn btn-secondary" id="deleteDataBackBtn">
+              <i class="fas fa-arrow-left me-2"></i>Go Back
+            </button>
           </div>
-          
-          <div class="mb-3">
-            <label for="timezone" class="form-label">Timezone</label>
-            <select class="form-select" id="timezone">
-              <option>UTC-8 (Pacific Time)</option>
-              <option>UTC-7 (Mountain Time)</option>
-              <option>UTC-6 (Central Time)</option>
-              <option>UTC-5 (Eastern Time)</option>
-              <option>UTC+0 (GMT)</option>
-            </select>
-          </div>
-          
-          <div class="mb-3">
-            <label for="currency" class="form-label">Default Currency</label>
-            <select class="form-select" id="currency">
-              <option>USD ($)</option>
-              <option>EUR (€)</option>
-              <option>GBP (£)</option>
-              <option>JPY (¥)</option>
-            </select>
-          </div>
-          
-          <button type="submit" class="btn btn-primary">Update Profile</button>
-        </form>
+        </div>
       </div>
-    </div>
-    
-    <div class="card">
-      <div class="card-header">
-        <h6 class="card-title mb-0">Change Password</h6>
-      </div>
-      <div class="card-body">
-        <form>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-          <div class="mb-3">
-            <label for="currentPassword" class="form-label">Current Password</label>
-            <input type="password" class="form-control" id="currentPassword" required>
-          </div>
-          
-          <div class="mb-3">
-            <label for="newPassword" class="form-label">New Password</label>
-            <input type="password" class="form-control" id="newPassword" required>
-          </div>
-          
-          <div class="mb-3">
-            <label for="confirmPassword" class="form-label">Confirm New Password</label>
-            <input type="password" class="form-control" id="confirmPassword" required>
-          </div>
-          
-          <button type="submit" class="btn btn-warning">Change Password</button>
-        </form>
+      <div class="modal-footer border-0" id="deleteDataFooter">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Delete Account Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-danger" id="deleteAccountModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i>Delete Account
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <strong>Warning!</strong> This action cannot be undone. Your account and all your data will be permanently deleted and you will be logged out.
+        </div>
+        
+        <div id="deleteAccountStep1">
+          <p><strong>Step 1:</strong> Please type <strong>DELETE ACCOUNT</strong> to confirm:</p>
+          <input type="text" class="form-control mb-3" id="deleteAccountConfirmation1" placeholder="Type DELETE ACCOUNT to confirm">
+          <div class="d-grid">
+            <button type="button" class="btn btn-warning" id="deleteAccountStep1Btn" disabled>
+              <i class="fas fa-arrow-right me-2"></i>Continue to Final Confirmation
+            </button>
+          </div>
+        </div>
+        
+        <div id="deleteAccountStep2" style="display: none;">
+          <div class="alert alert-danger">
+            <i class="fas fa-skull-crossbones me-2"></i>
+            <strong>FINAL WARNING!</strong> This will completely delete your account. You will lose access to DumpMyCash forever.
+          </div>
+          <p><strong>Step 2:</strong> Type <strong>PERMANENTLY DELETE</strong> to proceed:</p>
+          <input type="text" class="form-control mb-3" id="deleteAccountConfirmation2" placeholder="Type PERMANENTLY DELETE">
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-danger" id="confirmDeleteAccountBtn" disabled>
+              <i class="fas fa-user-times me-2"></i>Delete My Account Forever
+            </button>
+            <button type="button" class="btn btn-secondary" id="deleteAccountBackBtn">
+              <i class="fas fa-arrow-left me-2"></i>Go Back
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0" id="deleteAccountFooter">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
 {% endblock %}

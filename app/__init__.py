@@ -10,6 +10,7 @@ from app.account import account_bp
 from app.categories import category_bp
 from app.transactions import transaction_bp
 from app.home import home as home_bp
+from app.profile import profile_bp
 from app.utils import format_currency
 
 # Create the blueprint first
@@ -43,6 +44,7 @@ def create_app(config_class=Config):
     app.register_blueprint(account_bp)
     app.register_blueprint(category_bp)
     app.register_blueprint(transaction_bp)
+    app.register_blueprint(profile_bp, url_prefix='/profile')
     
     @app.before_request
     def load_logged_in_user():
@@ -90,8 +92,8 @@ def categories():
 @dashboard.route('/profile')
 @login_required
 def profile():
-    """Displays the user's profile page."""
-    return render_template('dashboard/profile.html')
+    """Redirect to the profile blueprint."""
+    return redirect(url_for('profile.index'))
 
 @dashboard.route('/settings')
 @login_required
