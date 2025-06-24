@@ -10,7 +10,7 @@ env/
 ENV/
 
 # Environment variables
-*.env
+.env
 
 # Flask instance folder
 instance/
