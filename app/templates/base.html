@@ -76,35 +76,20 @@
         {% if g.user %}
         <nav class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm" style="z-index: 1030; background: white; padding-left: 20px; padding-right: 20px;">
           <div class="container-fluid">
-            <!-- Page Title on the left -->
+            <!-- Quick Add Transaction button on the left -->
             <div class="d-flex align-items-center">
-              <h1 class="h4 mb-0 text-muted">
-                {% if request.endpoint %}
-                  {% if 'home' in request.endpoint %}
-                    <i class="fas fa-home"></i>
-                    Dashboard
-                  {% elif 'account' in request.endpoint %}
-                  <i class="fas fa-wallet"></i>
-                    Account
-                  {% elif 'transactions' in request.endpoint %}
-                  <i class="fas fa-exchange-alt"></i>
-                    Transactions
-                  {% elif 'categories' in request.endpoint %}
-                  <i class="fas fa-tags"></i>
-                    Categories
-                  {% elif 'profile' in request.endpoint %}
-                  <i class="fas fa-user-circle me-2"></i>
-                    Profile
-                  {% elif 'settings' in request.endpoint %}
-                  <i class="fas fa-cog me-2"></i>
-                    Settings
-                  {% else %}
-                    {{ request.endpoint.split('.')[-1].title() }}
-                  {% endif %}
-                {% else %}
-                  Dashboard
-                {% endif %}
-              </h1>
+              <!-- Desktop version -->
+              <a href="{{ url_for('transactions.list_transactions') }}?openModal=addTransaction" class="btn btn-primary btn-sm d-none d-md-flex align-items-center">
+                <i class="fas fa-exchange-alt me-2 me-1"></i>
+                <span>Add Transaction</span>
+              </a>
+              <!-- Mobile version - circular button -->
+              <a href="{{ url_for('transactions.list_transactions') }}?openModal=addTransaction" 
+                 class="btn btn-primary d-flex d-md-none align-items-center justify-content-center"
+                 style="width: 40px; height: 40px; border-radius: 50%;"
+                 title="Add Transaction">
+                <i class="fas fa-exchange-alt" style="font-size: 1.2em;"></i>
+              </a>
             </div>
             
             <!-- User info and dropdown on the right -->
@@ -136,7 +121,41 @@
         {% endif %}
 
         <main class="{% block main_class %}py-4 px-4{% endblock %} flex-grow-1">
-          {% block content %}{% endblock %}
+          <!-- Page Header -->
+          {% block page_header %}
+          <div class="container-fluid mb-4 text-center">
+            <div class="row">
+              <div class="col-12">
+                <h1 class="h2 mb-0 text-primary">
+                  {% if request.endpoint %}
+                    {% if 'home' in request.endpoint %}
+                      <i class="fas fa-home me-2"></i>Dashboard
+                    {% elif 'account' in request.endpoint %}
+                      <i class="fas fa-wallet me-2"></i>Account
+                    {% elif 'transactions' in request.endpoint %}
+                      <i class="fas fa-exchange-alt me-2"></i>Transactions
+                    {% elif 'categories' in request.endpoint %}
+                      <i class="fas fa-tags me-2"></i>Categories
+                    {% elif 'profile' in request.endpoint %}
+                      <i class="fas fa-user-circle me-2"></i>Profile
+                    {% elif 'settings' in request.endpoint %}
+                      <i class="fas fa-cog me-2"></i>Settings
+                    {% else %}
+                      {{ request.endpoint.split('.')[-1].title() }}
+                    {% endif %}
+                  {% else %}
+                    Dashboard
+                  {% endif %}
+                </h1>
+              </div>
+            </div>
+          </div>
+          {% endblock %}
+          
+          {% block content %}
+          
+          
+          {% endblock %}
         </main>
 
         {% block footer %}

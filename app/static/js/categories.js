@@ -141,27 +141,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    function showAlert(message, type = 'success') {
-        // Create alert element with fixed positioning
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-        
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        
-        // Add to body instead of container to avoid layout shifts
-        document.body.appendChild(alertDiv);
-        
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            if (alertDiv && alertDiv.parentNode) {
-                alertDiv.remove();
-            }
-        }, 5000);
+function showAlert(message, type) {
+    // Create alert element with the same styling as base.html
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show shadow-sm`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.style.minWidth = '300px';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    // Find or create the flash message container like base.html
+    let flashContainer = document.querySelector('.position-fixed.top-0.start-50.translate-middle-x');
+    if (!flashContainer) {
+        // Create the container with the same style as base.html
+        flashContainer = document.createElement('div');
+        flashContainer.className = 'position-fixed top-0 start-50 translate-middle-x';
+        flashContainer.style.zIndex = '1055';
+        flashContainer.style.marginTop = '20px';
+        document.body.appendChild(flashContainer);
     }
+    
+    // Insert alert into the flash container
+    flashContainer.appendChild(alertDiv);
+    
+    // Auto-dismiss after 2.5 seconds (same as base.js)
+    setTimeout(() => {
+        if (alertDiv && alertDiv.classList.contains('show')) {
+            const bsAlert = new bootstrap.Alert(alertDiv);
+            bsAlert.close();
+        }
+    }, 2500);
+}
     
     // Event listeners for modal triggers
     document.addEventListener('click', function(e) {
@@ -181,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 'today': 'Today',
                 'week': 'This Week',
                 'month': 'This Month',
-                'quarter': 'This Quarter',
                 'year': 'This Year',
                 'all': 'All Time'
             };
@@ -352,6 +363,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const categoryName = document.getElementById('editCategoryName').value;
         document.getElementById('deleteCategoryName').textContent = categoryName;
         
+        // Store the current category ID in the confirm delete button before closing the edit modal
+        confirmDeleteCategoryBtn.setAttribute('data-category-id', currentCategoryId);
+        
         bootstrap.Modal.getInstance(editCategoryModal).hide();
         new bootstrap.Modal(deleteCategoryModal).show();
     });
@@ -363,9 +377,17 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Get the category ID from the button's data attribute
+        const categoryIdToDelete = confirmDeleteCategoryBtn.getAttribute('data-category-id');
+        
+        if (!categoryIdToDelete) {
+            showAlert('Error: No category selected for deletion', 'danger');
+            return;
+        }
+        
         showSpinner(confirmDeleteCategoryBtn);
         
-        fetch(`/categories/api/categories/${currentCategoryId}`, {
+        fetch(`/categories/api/categories/${categoryIdToDelete}`, {
             method: 'DELETE',
             headers: {
                 'X-CSRFToken': csrfToken

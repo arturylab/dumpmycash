@@ -13,6 +13,9 @@ class TransactionManager {
         
         // Check URL parameters to auto-open modal
         this.checkAndOpenModal();
+        
+        // Restore scroll position if available
+        this.restoreScrollPosition();
     }
 
     setupAjaxDefaults() {
@@ -31,6 +34,9 @@ class TransactionManager {
         // Filter form auto-submit
         this.setupFilterForm();
         
+        // Clear filters button
+        this.setupClearFiltersButton();
+        
         // Time filter dropdown
         this.setupTimeFilter();
         
@@ -42,37 +48,133 @@ class TransactionManager {
     }
 
     setupFilterForm() {
-        const filterForm = document.querySelector('#filterCollapse form');
+        // Find the filter form (now always visible)
+        const filterForm = document.querySelector('#filterForm');
         if (filterForm) {
-            // Remove auto-submit functionality - users must click Apply Filters button
-            // The form will only submit when the user clicks the submit button
-            console.log('Filter form setup completed - manual submission only');
+            this.setupAutoSubmitFilters(filterForm);
+        }
+        
+        // Setup Clear Filters button to preserve current time filter
+        this.setupClearFiltersButton();
+    }
+
+    setupAutoSubmitFilters(form) {
+        // Auto-submit form when filters change
+        const filterInputs = form.querySelectorAll('select, input[type="text"]');
+        
+        filterInputs.forEach(input => {
+            let timeout;
+            
+            if (input.tagName === 'SELECT') {
+                // For dropdowns, submit immediately on change
+                input.addEventListener('change', () => {
+                    // Special handling for time filter when "custom" is selected
+                    if (input.id === 'timeFilter' && input.value === 'custom') {
+                        // Show custom date range modal instead of submitting
+                        const customModal = new bootstrap.Modal(document.getElementById('customDateRangeModal'));
+                        customModal.show();
+                        return;
+                    }
+                    this.submitFilterForm(form);
+                });
+            } else if (input.type === 'text') {
+                // For text inputs, debounce to avoid too many requests
+                input.addEventListener('input', () => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        this.submitFilterForm(form);
+                    }, 800); // Wait 800ms after user stops typing
+                });
+            }
+        });
+        
+        console.log('Auto-submit filters setup completed');
+    }
+
+    submitFilterForm(form) {
+        // Store current scroll position
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+        
+        // Get current form data
+        const formData = new FormData(form);
+        const url = new URL(window.location);
+        
+        // Clear existing filter parameters
+        url.searchParams.delete('category_id');
+        url.searchParams.delete('account_id');
+        url.searchParams.delete('search');
+        url.searchParams.delete('filter');
+        url.searchParams.delete('start_date');
+        url.searchParams.delete('end_date');
+        url.searchParams.delete('page'); // Reset to first page
+        
+        // Add form data to URL
+        for (let [key, value] of formData.entries()) {
+            if (value && key !== 'csrf_token') {
+                if (key === 'time_filter') {
+                    // Map time_filter to filter parameter
+                    url.searchParams.set('filter', value);
+                } else {
+                    url.searchParams.set(key, value);
+                }
+            }
+        }
+        
+        // Navigate to new URL
+        window.location.href = url.toString();
+    }
+
+    restoreScrollPosition() {
+        // Restore scroll position if available
+        const savedScrollPosition = sessionStorage.getItem('transactionScrollPosition');
+        if (savedScrollPosition) {
+            // Use setTimeout to ensure the page is fully loaded before scrolling
+            setTimeout(() => {
+                window.scrollTo(0, parseInt(savedScrollPosition));
+                // Clear the stored position after using it
+                sessionStorage.removeItem('transactionScrollPosition');
+            }, 100);
+        }
+    }
+
+    setupClearFiltersButton() {
+        const clearButton = document.querySelector('#clearFiltersBtn');
+        if (clearButton) {
+            clearButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Store current scroll position before clearing filters
+                const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+                sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+                
+                const url = new URL(window.location);
+                
+                // Preserve only the time filter and date range, clear everything else
+                const currentFilter = url.searchParams.get('filter');
+                const currentStartDate = url.searchParams.get('start_date');
+                const currentEndDate = url.searchParams.get('end_date');
+                
+                // Create clean URL with only preserved parameters
+                const cleanUrl = new URL(url.origin + url.pathname);
+                
+                if (currentFilter && currentFilter !== 'month') { // month is default, no need to preserve
+                    cleanUrl.searchParams.set('filter', currentFilter);
+                }
+                if (currentStartDate) {
+                    cleanUrl.searchParams.set('start_date', currentStartDate);
+                }
+                if (currentEndDate) {
+                    cleanUrl.searchParams.set('end_date', currentEndDate);
+                }
+                
+                // Navigate to clean URL
+                window.location.href = cleanUrl.toString();
+            });
         }
     }
 
     setupTimeFilter() {
-        // Handle time filter dropdown
-        const timeFilterDropdown = document.querySelector('#timeFilterDropdown');
-        if (timeFilterDropdown) {
-            timeFilterDropdown.addEventListener('click', (e) => {
-                if (e.target.classList.contains('dropdown-item')) {
-                    e.preventDefault();
-                    
-                    const filter = e.target.getAttribute('data-filter');
-                    const filterText = e.target.textContent;
-                    
-                    if (filter === 'custom') {
-                        // Show custom date range modal
-                        const customModal = new bootstrap.Modal(document.getElementById('customDateRangeModal'));
-                        customModal.show();
-                    } else {
-                        // Apply the filter immediately
-                        this.applyTimeFilter(filter, filterText);
-                    }
-                }
-            });
-        }
-
         // Handle custom date range modal
         const applyCustomBtn = document.querySelector('#applyCustomDateRange');
         if (applyCustomBtn) {
@@ -81,6 +183,10 @@ class TransactionManager {
                 const endDate = document.querySelector('#endDate').value;
                 
                 if (startDate && endDate) {
+                    // Store current scroll position before applying custom date range
+                    const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+                    sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+                    
                     const url = new URL(window.location);
                     url.searchParams.set('filter', 'custom');
                     url.searchParams.set('start_date', startDate);
@@ -121,21 +227,6 @@ class TransactionManager {
         const form = document.getElementById('transactionForm');
         const saveBtn = document.getElementById('saveTransactionBtn');
         const deleteBtn = document.getElementById('deleteTransactionBtn');
-        const addBtn = document.getElementById('addTransactionBtn');
-        const addBtnEmpty = document.getElementById('addTransactionBtnEmpty');
-
-        // Add transaction buttons
-        if (addBtn) {
-            addBtn.addEventListener('click', () => {
-                this.openAddModal();
-            });
-        }
-        
-        if (addBtnEmpty) {
-            addBtnEmpty.addEventListener('click', () => {
-                this.openAddModal();
-            });
-        }
 
         // Save transaction button
         if (saveBtn) {
@@ -470,7 +561,11 @@ class TransactionManager {
         document.getElementById('transactionId').value = '';
     }
 
-    applyTimeFilter(filter, filterText) {
+    applyTimeFilter(filter) {
+        // Store current scroll position before applying time filter
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+        
         const url = new URL(window.location);
         url.searchParams.set('filter', filter);
         url.searchParams.delete('start_date');

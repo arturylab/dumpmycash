@@ -19,8 +19,8 @@ def get_date_range(filter_type):
         start_date = now - timedelta(days=now.weekday())
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
-    elif filter_type == 'month' or not filter_type or filter_type not in ['today', 'week', 'quarter', 'year', 'all']:
-        # Primer día del mes actual (default para filtros inválidos)
+    elif filter_type == 'month':
+        # Primer día del mes actual
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         # Último día del mes actual
         if now.month == 12:
@@ -28,15 +28,24 @@ def get_date_range(filter_type):
         else:
             end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'quarter':
-        # Calcular el trimestre actual
-        quarter = (now.month - 1) // 3 + 1
-        start_month = (quarter - 1) * 3 + 1
-        start_date = now.replace(month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        end_month = start_month + 2
-        if end_month > 12:
-            end_date = now.replace(year=now.year + 1, month=end_month - 12, day=1) - timedelta(microseconds=1)
+        # Primer día del trimestre actual
+        current_month = now.month
+        if current_month in [1, 2, 3]:
+            quarter_start_month = 1
+        elif current_month in [4, 5, 6]:
+            quarter_start_month = 4
+        elif current_month in [7, 8, 9]:
+            quarter_start_month = 7
         else:
+            quarter_start_month = 10
+        
+        start_date = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Último día del trimestre
+        if quarter_start_month == 10:
+            end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
+        else:
+            end_month = quarter_start_month + 2
             if end_month == 12:
                 end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
             else:
@@ -46,8 +55,16 @@ def get_date_range(filter_type):
         start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         # Último día del año actual
         end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
-    else:  # 'all'
+    elif filter_type == 'all':
         return None, None
+    else:  # Filtro inválido, por defecto usar 'month'
+        # Primer día del mes actual
+        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Último día del mes actual
+        if now.month == 12:
+            end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
+        else:
+            end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
     
     return start_date, end_date
 
@@ -55,8 +72,8 @@ def get_date_range(filter_type):
 @login_required
 def list_categories():
     """Mostrar la página de categorías con todas las categorías del usuario"""
-    # Obtener el filtro de tiempo de la query string, por defecto 'month'
-    time_filter = request.args.get('filter', 'month')
+    # Obtener el filtro de tiempo de la query string, por defecto 'all'
+    time_filter = request.args.get('filter', 'all')
     start_date, end_date = get_date_range(time_filter)
     
     # Base query for categories
@@ -132,13 +149,12 @@ def list_categories():
         'today': 'Today',
         'week': 'This Week',
         'month': 'This Month',
-        'quarter': 'This Quarter',
         'year': 'This Year',
         'all': 'All Time'
     }
     
-    # Default to month for invalid filters
-    display_filter = time_filter if time_filter in filter_names else 'month'
+    # Default to all for invalid filters
+    display_filter = time_filter if time_filter in filter_names else 'all'
     
     return render_template('dashboard/categories.html',
                          income_categories=income_categories,
@@ -148,7 +164,7 @@ def list_categories():
                          total_income=total_income,
                          total_expenses=total_expenses,
                          current_filter=display_filter,
-                         filter_display_name=filter_names.get(display_filter, 'This Month'))
+                         filter_display_name=filter_names.get(display_filter, 'All Time'))
 
 # API Endpoints para operaciones CRUD
 
@@ -377,16 +393,24 @@ def api_delete_category(category_id):
                 'error': 'Category not found'
             }), 404
         
-        # TODO: Verificar si la categoría tiene transacciones asociadas
-        # En el futuro, cuando se implemente el modelo de transacciones,
-        # se debe verificar si existen transacciones asociadas a esta categoría
+        # Verificar si la categoría tiene transacciones asociadas
+        transaction_count = Transaction.query.filter_by(
+            category_id=category_id,
+            user_id=g.user.id
+        ).count()
+        
+        if transaction_count > 0:
+            return jsonify({
+                'success': False,
+                'error': f'No se puede eliminar la categoría "{cat.name}" porque tiene {transaction_count} transaccion{"es" if transaction_count > 1 else ""} asociada{"s" if transaction_count > 1 else ""}. Elimina primero las transacciones o asígnalas a otra categoría.'
+            }), 400
         
         db.session.delete(cat)
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'Category deleted successfully'
+            'message': f'Categoría "{cat.name}" eliminada exitosamente'
         })
         
     except Exception as e:
