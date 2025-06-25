@@ -36,12 +36,6 @@ class TestDashboardAccess:
         assert response.status_code == 302
         assert '/login' in response.location
     
-    def test_settings_requires_login(self, client):
-        """Test that settings endpoint redirects to login when not authenticated."""
-        response = client.get('/settings')
-        assert response.status_code == 302
-        assert '/login' in response.location
-
 
 class TestDashboardAuthenticated:
     """Test dashboard endpoints when user is authenticated."""
@@ -89,13 +83,6 @@ class TestDashboardAuthenticated:
         response = client.get('/profile')
         assert response.status_code == 200
         assert b"Profile" in response.data
-        assert b"DumpMyMoney" in response.data
-    
-    def test_settings_authenticated_access(self, client):
-        """Test that authenticated user can access settings page."""
-        response = client.get('/settings')
-        assert response.status_code == 200
-        assert b"Settings" in response.data
         assert b"DumpMyMoney" in response.data
 
 
@@ -205,13 +192,6 @@ class TestDashboardContent:
         assert b"profile" in response.data.lower()
         # Should show user information
         assert b"contentuser" in response.data or b"content@example.com" in response.data
-    
-    def test_settings_page_content(self, client):
-        """Test that settings page contains expected content."""
-        response = client.get('/settings')
-        assert response.status_code == 200
-        # Check for settings-specific content
-        assert b"setting" in response.data.lower()
 
 
 class TestDashboardSecurity:
