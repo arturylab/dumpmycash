@@ -377,7 +377,7 @@ class TestCategoriesAPI:
         
         data = json.loads(response.data)
         assert data['success'] is True
-        assert f'Categoría "{category_name}" eliminada exitosamente' in data['message']
+        assert f'Category "{category_name}" deleted successfully' in data['message']
         
         # Verify category is actually deleted
         response = logged_in_client.get(f'/categories/api/categories/{category_id}')
@@ -426,9 +426,9 @@ class TestCategoriesAPI:
         
         data = json.loads(response.data)
         assert data['success'] is False
-        assert 'No se puede eliminar la categoría' in data['error']
+        assert 'Cannot delete category' in data['error']
         assert category.name in data['error']
-        assert '1 transaccion asociada' in data['error']
+        assert '1 associated transaction' in data['error']
         
         # Verify category still exists
         response = logged_in_client.get(f'/categories/api/categories/{category.id}')
@@ -486,9 +486,9 @@ class TestCategoriesAPI:
         
         data = json.loads(response.data)
         assert data['success'] is False
-        assert 'No se puede eliminar la categoría' in data['error']
+        assert 'Cannot delete category' in data['error']
         assert category.name in data['error']
-        assert '3 transacciones asociadas' in data['error']  # Plural form
+        assert '3 associated transactions' in data['error']  # Plural form
         
         # Verify category still exists
         response = logged_in_client.get(f'/categories/api/categories/{category.id}')

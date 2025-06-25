@@ -1,119 +1,121 @@
-// Transactions JavaScript functionality
+/**
+ * Transaction Management JavaScript Module
+ * 
+ * Handles all transaction-related frontend functionality including:
+ * - Transaction filtering and search
+ * - Modal operations for add/edit/delete
+ * - Form validation and submission
+ * - AJAX operations with proper error handling
+ * - URL state management and scroll position restoration
+ * 
+ * @class TransactionManager
+ */
 class TransactionManager {
     constructor() {
+        this.modalInstance = null;
         this.init();
     }
 
+    /**
+     * Initialize the transaction manager
+     */
     init() {
         this.setupEventListeners();
         this.setupAjaxDefaults();
         this.setupModal();
-        // Initialize modal instance once
-        this.modalInstance = new bootstrap.Modal(document.getElementById('transactionModal'));
-        
-        // Check URL parameters to auto-open modal
+        this.initializeModal();
         this.checkAndOpenModal();
-        
-        // Restore scroll position if available
         this.restoreScrollPosition();
     }
 
-    setupAjaxDefaults() {
-        // Setup CSRF token for AJAX requests
-        const csrfToken = document.querySelector('meta[name=csrf-token]');
-        if (csrfToken) {
-            fetch.defaults = {
-                headers: {
-                    'X-CSRFToken': csrfToken.getAttribute('content')
-                }
-            };
+    /**
+     * Initialize modal instance
+     */
+    initializeModal() {
+        const modalElement = document.getElementById('transactionModal');
+        if (modalElement) {
+            this.modalInstance = new bootstrap.Modal(modalElement);
         }
     }
 
+    /**
+     * Setup CSRF token for AJAX requests
+     */
+    setupAjaxDefaults() {
+        const csrfToken = document.querySelector('meta[name=csrf-token]');
+        if (csrfToken) {
+            this.csrfToken = csrfToken.getAttribute('content');
+        }
+    }
+
+    /**
+     * Setup all event listeners
+     */
     setupEventListeners() {
-        // Filter form auto-submit
         this.setupFilterForm();
-        
-        // Clear filters button
         this.setupClearFiltersButton();
-        
-        // Time filter dropdown
         this.setupTimeFilter();
-        
-        // Quick actions
-        this.setupQuickActions();
-        
-        // Transaction row clicks
         this.setupTransactionRowClicks();
     }
 
+    /**
+     * Setup filter form with auto-submission
+     */
     setupFilterForm() {
-        // Find the filter form (now always visible)
         const filterForm = document.querySelector('#filterForm');
         if (filterForm) {
             this.setupAutoSubmitFilters(filterForm);
         }
-        
-        // Setup Clear Filters button to preserve current time filter
-        this.setupClearFiltersButton();
     }
 
+    /**
+     * Setup auto-submit functionality for filter inputs
+     * @param {HTMLFormElement} form - The filter form element
+     */
     setupAutoSubmitFilters(form) {
-        // Auto-submit form when filters change
         const filterInputs = form.querySelectorAll('select, input[type="text"]');
         
         filterInputs.forEach(input => {
             let timeout;
             
             if (input.tagName === 'SELECT') {
-                // For dropdowns, submit immediately on change
                 input.addEventListener('change', () => {
-                    // Special handling for time filter when "custom" is selected
+                    // Special handling for custom time filter
                     if (input.id === 'timeFilter' && input.value === 'custom') {
-                        // Show custom date range modal instead of submitting
-                        const customModal = new bootstrap.Modal(document.getElementById('customDateRangeModal'));
-                        customModal.show();
+                        this.showCustomDateRangeModal();
                         return;
                     }
                     this.submitFilterForm(form);
                 });
             } else if (input.type === 'text') {
-                // For text inputs, debounce to avoid too many requests
+                // Debounce text inputs to avoid excessive requests
                 input.addEventListener('input', () => {
                     clearTimeout(timeout);
                     timeout = setTimeout(() => {
                         this.submitFilterForm(form);
-                    }, 800); // Wait 800ms after user stops typing
+                    }, 800);
                 });
             }
         });
-        
-        console.log('Auto-submit filters setup completed');
     }
 
+    /**
+     * Submit filter form and update URL
+     * @param {HTMLFormElement} form - The filter form element
+     */
     submitFilterForm(form) {
-        // Store current scroll position
-        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-        sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+        this.saveScrollPosition();
         
-        // Get current form data
         const formData = new FormData(form);
         const url = new URL(window.location);
         
         // Clear existing filter parameters
-        url.searchParams.delete('category_id');
-        url.searchParams.delete('account_id');
-        url.searchParams.delete('search');
-        url.searchParams.delete('filter');
-        url.searchParams.delete('start_date');
-        url.searchParams.delete('end_date');
-        url.searchParams.delete('page'); // Reset to first page
+        this.clearFilterParams(url);
         
         // Add form data to URL
         for (let [key, value] of formData.entries()) {
             if (value && key !== 'csrf_token') {
                 if (key === 'time_filter') {
-                    // Map time_filter to filter parameter
                     url.searchParams.set('filter', value);
                 } else {
                     url.searchParams.set(key, value);
@@ -121,88 +123,109 @@ class TransactionManager {
             }
         }
         
-        // Navigate to new URL
         window.location.href = url.toString();
     }
 
+    /**
+     * Clear filter parameters from URL
+     * @param {URL} url - The URL object to modify
+     */
+    clearFilterParams(url) {
+        const paramsToRemove = ['category_id', 'account_id', 'search', 'filter', 'start_date', 'end_date', 'page'];
+        paramsToRemove.forEach(param => url.searchParams.delete(param));
+    }
+
+    /**
+     * Save current scroll position to session storage
+     */
+    saveScrollPosition() {
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+    }
+
+    /**
+     * Restore scroll position from session storage
+     */
     restoreScrollPosition() {
-        // Restore scroll position if available
         const savedScrollPosition = sessionStorage.getItem('transactionScrollPosition');
         if (savedScrollPosition) {
-            // Use setTimeout to ensure the page is fully loaded before scrolling
             setTimeout(() => {
                 window.scrollTo(0, parseInt(savedScrollPosition));
-                // Clear the stored position after using it
                 sessionStorage.removeItem('transactionScrollPosition');
             }, 100);
         }
     }
 
+    /**
+     * Setup clear filters button
+     */
     setupClearFiltersButton() {
         const clearButton = document.querySelector('#clearFiltersBtn');
         if (clearButton) {
             clearButton.addEventListener('click', (e) => {
                 e.preventDefault();
-                
-                // Store current scroll position before clearing filters
-                const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-                sessionStorage.setItem('transactionScrollPosition', scrollPosition);
-                
-                const url = new URL(window.location);
-                
-                // Preserve only the time filter and date range, clear everything else
-                const currentFilter = url.searchParams.get('filter');
-                const currentStartDate = url.searchParams.get('start_date');
-                const currentEndDate = url.searchParams.get('end_date');
-                
-                // Create clean URL with only preserved parameters
-                const cleanUrl = new URL(url.origin + url.pathname);
-                
-                if (currentFilter && currentFilter !== 'month') { // month is default, no need to preserve
-                    cleanUrl.searchParams.set('filter', currentFilter);
-                }
-                if (currentStartDate) {
-                    cleanUrl.searchParams.set('start_date', currentStartDate);
-                }
-                if (currentEndDate) {
-                    cleanUrl.searchParams.set('end_date', currentEndDate);
-                }
-                
-                // Navigate to clean URL
-                window.location.href = cleanUrl.toString();
+                this.clearFilters();
             });
         }
     }
 
+    /**
+     * Clear all filters including time filter and date range
+     */
+    clearFilters() {
+        this.saveScrollPosition();
+        
+        const url = new URL(window.location);
+        
+        // Create clean URL with only the base path - remove all filter parameters
+        const cleanUrl = new URL(url.origin + url.pathname);
+        
+        window.location.href = cleanUrl.toString();
+    }
+
+    /**
+     * Setup time filter functionality
+     */
     setupTimeFilter() {
-        // Handle custom date range modal
         const applyCustomBtn = document.querySelector('#applyCustomDateRange');
         if (applyCustomBtn) {
             applyCustomBtn.addEventListener('click', () => {
-                const startDate = document.querySelector('#startDate').value;
-                const endDate = document.querySelector('#endDate').value;
-                
-                if (startDate && endDate) {
-                    // Store current scroll position before applying custom date range
-                    const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-                    sessionStorage.setItem('transactionScrollPosition', scrollPosition);
-                    
-                    const url = new URL(window.location);
-                    url.searchParams.set('filter', 'custom');
-                    url.searchParams.set('start_date', startDate);
-                    url.searchParams.set('end_date', endDate);
-                    url.searchParams.delete('page'); // Reset to first page
-                    
-                    window.location.href = url.toString();
-                }
+                this.applyCustomDateRange();
             });
         }
     }
 
-    setupQuickActions() {
-        // Already handled by time filter
+    /**
+     * Show custom date range modal
+     */
+    showCustomDateRangeModal() {
+        const customModal = new bootstrap.Modal(document.getElementById('customDateRangeModal'));
+        customModal.show();
     }
 
+    /**
+     * Apply custom date range filter
+     */
+    applyCustomDateRange() {
+        const startDate = document.querySelector('#startDate').value;
+        const endDate = document.querySelector('#endDate').value;
+        
+        if (startDate && endDate) {
+            this.saveScrollPosition();
+            
+            const url = new URL(window.location);
+            url.searchParams.set('filter', 'custom');
+            url.searchParams.set('start_date', startDate);
+            url.searchParams.set('end_date', endDate);
+            url.searchParams.delete('page');
+            
+            window.location.href = url.toString();
+        }
+    }
+
+    /**
+     * Setup transaction row click handlers
+     */
     setupTransactionRowClicks() {
         const transactionRows = document.querySelectorAll('.transaction-row');
         transactionRows.forEach(row => {
@@ -212,59 +235,71 @@ class TransactionManager {
                 const isTransfer = row.getAttribute('data-is-transfer') === 'true';
                 
                 if (isTransfer) {
-                    // Show warning for transfer transactions
-                    alert('Transfer transactions cannot be edited directly. Please use the Account page to manage transfers.');
+                    this.showTransferWarning();
                 } else {
-                    // Open edit modal for regular transactions
                     this.openEditModal(transactionId);
                 }
             });
         });
     }
 
+    /**
+     * Show warning for transfer transactions
+     */
+    showTransferWarning() {
+        alert('Transfer transactions cannot be edited directly. Please use the Account page to manage transfers.');
+    }
+
+    /**
+     * Setup modal event listeners
+     */
     setupModal() {
         const modal = document.getElementById('transactionModal');
         const form = document.getElementById('transactionForm');
         const saveBtn = document.getElementById('saveTransactionBtn');
         const deleteBtn = document.getElementById('deleteTransactionBtn');
-
-        // Save transaction button
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                this.saveTransaction();
-            });
-        }
-
-        // Delete transaction button
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => {
-                this.showDeleteConfirmationModal();
-            });
-        }
-
-        // Reset form when modal is hidden
-        if (modal) {
-            modal.addEventListener('hidden.bs.modal', () => {
-                this.resetForm();
-                // Force cleanup of any bootstrap modal backdrop
-                const backdrops = document.querySelectorAll('.modal-backdrop');
-                backdrops.forEach(backdrop => backdrop.remove());
-                // Remove modal-open class from body if it's stuck
-                document.body.classList.remove('modal-open');
-                document.body.style.overflow = '';
-                document.body.style.paddingRight = '';
-            });
-        }
-        
-        // Delete confirmation button
         const confirmDeleteBtn = document.getElementById('confirmDeleteTransaction');
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveTransaction());
+        }
+
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => this.showDeleteConfirmationModal());
+        }
+
         if (confirmDeleteBtn) {
-            confirmDeleteBtn.addEventListener('click', () => {
-                this.confirmDeleteTransaction();
-            });
+            confirmDeleteBtn.addEventListener('click', () => this.confirmDeleteTransaction());
+        }
+
+        if (modal) {
+            modal.addEventListener('hidden.bs.modal', () => this.handleModalHidden());
         }
     }
 
+    /**
+     * Handle modal hidden event
+     */
+    handleModalHidden() {
+        this.resetForm();
+        this.cleanupModalBackdrop();
+    }
+
+    /**
+     * Clean up modal backdrop and body classes
+     */
+    cleanupModalBackdrop() {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => backdrop.remove());
+        
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    }
+
+    /**
+     * Open modal for adding new transaction
+     */
     openAddModal() {
         const modalTitle = document.getElementById('transactionModalLabel');
         const deleteBtn = document.getElementById('deleteTransactionBtn');
@@ -272,154 +307,235 @@ class TransactionManager {
         modalTitle.textContent = 'Add Transaction';
         deleteBtn.style.display = 'none';
         this.resetForm();
+        this.setCurrentDateTime();
         
-        // Set current date/time
-        const now = new Date();
-        // Format as YYYY-MM-DDTHH:MM in local time
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const dateString = `${year}-${month}-${day}T${hours}:${minutes}`;
-        document.getElementById('date').value = dateString;
-        
-        this.modalInstance.show();
+        if (this.modalInstance) {
+            this.modalInstance.show();
+        }
     }
 
+    /**
+     * Set current date and time in the form
+     */
+    setCurrentDateTime() {
+        const now = new Date();
+        const dateString = this.formatDateTimeLocal(now);
+        document.getElementById('date').value = dateString;
+    }
+
+    /**
+     * Format date for datetime-local input
+     * @param {Date} date - Date object to format
+     * @returns {string} Formatted date string
+     */
+    formatDateTimeLocal(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    /**
+     * Open modal for editing existing transaction
+     * @param {number} transactionId - ID of transaction to edit
+     */
     async openEditModal(transactionId) {
         try {
-            const response = await fetch(`/transactions/api/transactions/${transactionId}`);
-            if (!response.ok) throw new Error('Failed to fetch transaction');
-            
-            const transaction = await response.json();
-            
-            const modalTitle = document.getElementById('transactionModalLabel');
-            const deleteBtn = document.getElementById('deleteTransactionBtn');
-            
-            modalTitle.textContent = 'Edit Transaction';
-            deleteBtn.style.display = 'inline-block';
-            
-            // Reset form first to clear any previous data
-            this.resetForm();
-            
-            // Populate form with all transaction data
-            document.getElementById('transactionId').value = transaction.id;
-            document.getElementById('amount').value = transaction.amount;
-            document.getElementById('description').value = transaction.description || '';
-            
-            // Set account and category immediately
-            document.getElementById('modal_account_id').value = transaction.account.id;
-            document.getElementById('modal_category_id').value = transaction.category.id;
-            
-            // Format date for datetime-local input (local time, not UTC)
-            const date = new Date(transaction.date);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const dateString = `${year}-${month}-${day}T${hours}:${minutes}`;
-            document.getElementById('date').value = dateString;
-            
-            // Show modal first, then set dropdown values
-            this.modalInstance.show();
-            
-            // Wait a bit for modal to be fully visible, then verify and ensure dropdown values are set
-            setTimeout(() => {
-                // Verify account dropdown is correctly set
-                const accountSelect = document.getElementById('modal_account_id');
-                if (accountSelect.value !== transaction.account.id.toString()) {
-                    console.log('Re-setting modal_account_id to:', transaction.account.id);
-                    accountSelect.value = transaction.account.id;
-                }
-                console.log('Account select value:', accountSelect.value);
-                
-                // Verify category dropdown is correctly set
-                const categorySelect = document.getElementById('modal_category_id');
-                if (categorySelect.value !== transaction.category.id.toString()) {
-                    console.log('Re-setting modal_category_id to:', transaction.category.id);
-                    categorySelect.value = transaction.category.id;
-                }
-                console.log('Category select value:', categorySelect.value);
-                
-                // Trigger change events to ensure proper selection
-                accountSelect.dispatchEvent(new Event('change'));
-                categorySelect.dispatchEvent(new Event('change'));
-                
-                // Final verification that the select values are correctly set
-                console.log('Final form values verification:', {
-                    accountSelected: accountSelect.value,
-                    categorySelected: categorySelect.value,
-                    amountValue: document.getElementById('amount').value,
-                    descriptionValue: document.getElementById('description').value,
-                    expectedAccount: transaction.account.id,
-                    expectedCategory: transaction.category.id
-                });
-            }, 100); // Small delay to ensure modal is fully rendered
-            
+            const transaction = await this.fetchTransaction(transactionId);
+            this.populateEditModal(transaction);
         } catch (error) {
             console.error('Error loading transaction:', error);
             alert('Error loading transaction details');
         }
     }
 
+    /**
+     * Fetch transaction data from API
+     * @param {number} transactionId - Transaction ID
+     * @returns {Promise<Object>} Transaction data
+     */
+    async fetchTransaction(transactionId) {
+        const response = await fetch(`/transactions/api/transactions/${transactionId}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch transaction');
+        }
+        return await response.json();
+    }
+
+    /**
+     * Populate modal with transaction data for editing
+     * @param {Object} transaction - Transaction data
+     */
+    populateEditModal(transaction) {
+        const modalTitle = document.getElementById('transactionModalLabel');
+        const deleteBtn = document.getElementById('deleteTransactionBtn');
+        
+        modalTitle.textContent = 'Edit Transaction';
+        deleteBtn.style.display = 'inline-block';
+        
+        this.resetForm();
+        this.fillTransactionForm(transaction);
+        
+        if (this.modalInstance) {
+            this.modalInstance.show();
+        }
+        
+        // Ensure dropdowns are properly set after modal is visible
+        setTimeout(() => this.verifyFormValues(transaction), 100);
+    }
+
+    /**
+     * Fill form with transaction data
+     * @param {Object} transaction - Transaction data
+     */
+    fillTransactionForm(transaction) {
+        document.getElementById('transactionId').value = transaction.id;
+        document.getElementById('amount').value = transaction.amount;
+        document.getElementById('description').value = transaction.description || '';
+        document.getElementById('modal_account_id').value = transaction.account.id;
+        document.getElementById('modal_category_id').value = transaction.category.id;
+        
+        // Format date for datetime-local input
+        const date = new Date(transaction.date);
+        const dateString = this.formatDateTimeLocal(date);
+        document.getElementById('date').value = dateString;
+    }
+
+    /**
+     * Verify and ensure form values are correctly set
+     * @param {Object} transaction - Expected transaction data
+     */
+    verifyFormValues(transaction) {
+        const accountSelect = document.getElementById('modal_account_id');
+        const categorySelect = document.getElementById('modal_category_id');
+        
+        // Re-set values if they didn't stick
+        if (accountSelect.value !== transaction.account.id.toString()) {
+            accountSelect.value = transaction.account.id;
+        }
+        
+        if (categorySelect.value !== transaction.category.id.toString()) {
+            categorySelect.value = transaction.category.id;
+        }
+        
+        // Trigger change events
+        accountSelect.dispatchEvent(new Event('change'));
+        categorySelect.dispatchEvent(new Event('change'));
+    }
+
+    /**
+     * Save transaction (create or update)
+     */
     async saveTransaction() {
         const form = document.getElementById('transactionForm');
         const formData = new FormData(form);
         const transactionId = document.getElementById('transactionId').value;
         
         try {
-            let url, method;
-            if (transactionId) {
-                // Update existing transaction
-                url = `/transactions/api/transactions/${transactionId}`;
-                method = 'PUT';
-            } else {
-                // Create new transaction
-                url = '/transactions/api/transactions';
-                method = 'POST';
-            }
-
-            // Convert FormData to JSON
-            const data = {};
-            for (let [key, value] of formData.entries()) {
-                if (key !== 'csrf_token' && key !== 'transaction_id') {
-                    data[key] = value;
-                }
-            }
-
-            const response = await fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': formData.get('csrf_token')
-                },
-                body: JSON.stringify(data)
-            });
-
+            const { url, method } = this.getTransactionEndpoint(transactionId);
+            const data = this.convertFormDataToJson(formData);
+            
+            const response = await this.submitTransactionData(url, method, data, formData);
+            
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || 'Failed to save transaction');
             }
 
-            // Close modal first
-            this.modalInstance.hide();
-            
-            // Redirect to success page which will show flash message and then redirect back
-            const operation = transactionId ? 'update' : 'create';
-            window.location.href = `/transactions/success/${operation}`;
+            this.handleTransactionSaveSuccess(transactionId);
 
         } catch (error) {
-            console.error('Error saving transaction:', error);
-            
-            // Close modal and redirect to error page
-            this.modalInstance.hide();
-            const errorMessage = encodeURIComponent(error.message);
-            window.location.href = `/transactions/error/save?message=${errorMessage}`;
+            this.handleTransactionSaveError(error);
         }
     }
 
+    /**
+     * Get transaction endpoint URL and method
+     * @param {string} transactionId - Transaction ID (empty for new transaction)
+     * @returns {Object} Object with url and method
+     */
+    getTransactionEndpoint(transactionId) {
+        if (transactionId) {
+            return {
+                url: `/transactions/api/transactions/${transactionId}`,
+                method: 'PUT'
+            };
+        } else {
+            return {
+                url: '/transactions/api/transactions',
+                method: 'POST'
+            };
+        }
+    }
+
+    /**
+     * Convert FormData to JSON object
+     * @param {FormData} formData - Form data to convert
+     * @returns {Object} JSON object
+     */
+    convertFormDataToJson(formData) {
+        const data = {};
+        for (let [key, value] of formData.entries()) {
+            if (key !== 'csrf_token' && key !== 'transaction_id') {
+                data[key] = value;
+            }
+        }
+        return data;
+    }
+
+    /**
+     * Submit transaction data to API
+     * @param {string} url - API endpoint URL
+     * @param {string} method - HTTP method
+     * @param {Object} data - Transaction data
+     * @param {FormData} formData - Original form data (for CSRF token)
+     * @returns {Promise<Response>} Fetch response
+     */
+    async submitTransactionData(url, method, data, formData) {
+        return await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': formData.get('csrf_token')
+            },
+            body: JSON.stringify(data)
+        });
+    }
+
+    /**
+     * Handle successful transaction save
+     * @param {string} transactionId - Transaction ID (empty for new transaction)
+     */
+    handleTransactionSaveSuccess(transactionId) {
+        if (this.modalInstance) {
+            this.modalInstance.hide();
+        }
+        
+        const operation = transactionId ? 'update' : 'create';
+        window.location.href = `/transactions/success/${operation}`;
+    }
+
+    /**
+     * Handle transaction save error
+     * @param {Error} error - Error object
+     */
+    handleTransactionSaveError(error) {
+        console.error('Error saving transaction:', error);
+        
+        if (this.modalInstance) {
+            this.modalInstance.hide();
+        }
+        
+        const errorMessage = encodeURIComponent(error.message);
+        window.location.href = `/transactions/error/save?message=${errorMessage}`;
+    }
+
+    /**
+     * Delete transaction (legacy method - kept for compatibility)
+     * @deprecated Use showDeleteConfirmationModal instead
+     */
     async deleteTransaction() {
         const transactionId = document.getElementById('transactionId').value;
         if (!transactionId) return;
@@ -429,20 +545,16 @@ class TransactionManager {
         }
 
         try {
-            const response = await fetch(`/transactions/api/transactions/${transactionId}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-                }
-            });
-
+            const response = await this.performDeleteTransaction(transactionId);
+            
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || 'Failed to delete transaction');
             }
 
-            // Close modal and refresh page
-            this.modalInstance.hide();
+            if (this.modalInstance) {
+                this.modalInstance.hide();
+            }
             window.location.reload();
 
         } catch (error) {
@@ -451,148 +563,223 @@ class TransactionManager {
         }
     }
 
+    /**
+     * Show delete confirmation modal with transaction details
+     */
     showDeleteConfirmationModal() {
         const transactionId = document.getElementById('transactionId').value;
         if (!transactionId) return;
 
-        // Get current transaction data from the form
+        const transactionData = this.getTransactionDataFromForm();
+        this.populateDeleteModal(transactionData);
+        this.setDeleteModalTransactionId(transactionId);
+        
+        if (this.modalInstance) {
+            this.modalInstance.hide();
+        }
+        
+        setTimeout(() => this.showDeleteModal(), 300);
+    }
+
+    /**
+     * Get transaction data from form
+     * @returns {Object} Transaction data from form
+     */
+    getTransactionDataFromForm() {
         const amount = document.getElementById('amount').value;
         const description = document.getElementById('description').value || 'No description';
         const accountSelect = document.getElementById('modal_account_id');
         const categorySelect = document.getElementById('modal_category_id');
         const date = document.getElementById('date').value;
 
-        // Get selected account and category names
-        const accountName = accountSelect.options[accountSelect.selectedIndex]?.text || 'Unknown Account';
-        const categoryName = categorySelect.options[categorySelect.selectedIndex]?.text || 'Unknown Category';
-
-        // Format date for display
-        let formattedDate = 'Unknown Date';
-        if (date) {
-            try {
-                const dateObj = new Date(date);
-                formattedDate = dateObj.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-            } catch (e) {
-                formattedDate = date;
-            }
-        }
-
-        // Populate delete confirmation modal
-        document.getElementById('deleteTransactionAmount').textContent = `$${parseFloat(amount || 0).toFixed(2)}`;
-        document.getElementById('deleteTransactionDescription').textContent = description;
-        document.getElementById('deleteTransactionAccount').textContent = accountName;
-        document.getElementById('deleteTransactionCategory').textContent = categoryName;
-        document.getElementById('deleteTransactionDate').textContent = formattedDate;
-
-        // Store transaction ID for deletion
-        document.getElementById('confirmDeleteTransaction').setAttribute('data-transaction-id', transactionId);
-
-        // Close the transaction modal first
-        this.modalInstance.hide();
-
-        // Show delete confirmation modal after a short delay
-        setTimeout(() => {
-            const deleteModal = new bootstrap.Modal(document.getElementById('deleteTransactionModal'));
-            deleteModal.show();
-        }, 300);
+        return {
+            amount,
+            description,
+            accountName: accountSelect.options[accountSelect.selectedIndex]?.text || 'Unknown Account',
+            categoryName: categorySelect.options[categorySelect.selectedIndex]?.text || 'Unknown Category',
+            formattedDate: this.formatDateForDisplay(date)
+        };
     }
 
+    /**
+     * Format date for display in delete modal
+     * @param {string} dateValue - Date string from form
+     * @returns {string} Formatted date string
+     */
+    formatDateForDisplay(dateValue) {
+        if (!dateValue) return 'Unknown Date';
+        
+        try {
+            const dateObj = new Date(dateValue);
+            return dateObj.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (e) {
+            return dateValue;
+        }
+    }
+
+    /**
+     * Populate delete confirmation modal with transaction data
+     * @param {Object} transactionData - Transaction data to display
+     */
+    populateDeleteModal(transactionData) {
+        document.getElementById('deleteTransactionAmount').textContent = 
+            `$${parseFloat(transactionData.amount || 0).toFixed(2)}`;
+        document.getElementById('deleteTransactionDescription').textContent = transactionData.description;
+        document.getElementById('deleteTransactionAccount').textContent = transactionData.accountName;
+        document.getElementById('deleteTransactionCategory').textContent = transactionData.categoryName;
+        document.getElementById('deleteTransactionDate').textContent = transactionData.formattedDate;
+    }
+
+    /**
+     * Set transaction ID for deletion
+     * @param {string} transactionId - Transaction ID
+     */
+    setDeleteModalTransactionId(transactionId) {
+        document.getElementById('confirmDeleteTransaction').setAttribute('data-transaction-id', transactionId);
+    }
+
+    /**
+     * Show delete confirmation modal
+     */
+    showDeleteModal() {
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteTransactionModal'));
+        deleteModal.show();
+    }
+
+    /**
+     * Confirm and execute transaction deletion
+     */
     async confirmDeleteTransaction() {
         const confirmBtn = document.getElementById('confirmDeleteTransaction');
         const transactionId = confirmBtn.getAttribute('data-transaction-id');
         
         if (!transactionId) return;
 
-        // Show loading state
-        const spinner = confirmBtn.querySelector('.spinner-border');
-        const originalHTML = confirmBtn.innerHTML;
-        confirmBtn.disabled = true;
-        spinner.classList.remove('d-none');
+        this.setDeleteButtonLoading(confirmBtn, true);
 
         try {
-            const response = await fetch(`/transactions/api/transactions/${transactionId}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
-                }
-            });
+            const response = await this.performDeleteTransaction(transactionId);
 
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Failed to delete transaction');
             }
 
-            // Close delete modal
-            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteTransactionModal'));
-            if (deleteModal) {
-                deleteModal.hide();
-            }
-
-            // Redirect to success page which will show flash message and then redirect back
+            this.hideDeleteModal();
             window.location.href = '/transactions/success/delete';
 
         } catch (error) {
             console.error('Error deleting transaction:', error);
-            
-            // Close modal and redirect to error page
-            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteTransactionModal'));
-            if (deleteModal) {
-                deleteModal.hide();
-            }
+            this.hideDeleteModal();
             
             const errorMessage = encodeURIComponent(error.message);
             window.location.href = `/transactions/error/delete?message=${errorMessage}`;
         } finally {
-            // Reset button state
-            confirmBtn.disabled = false;
-            confirmBtn.innerHTML = originalHTML;
+            this.setDeleteButtonLoading(confirmBtn, false);
         }
     }
 
-    resetForm() {
-        const form = document.getElementById('transactionForm');
-        form.reset();
-        document.getElementById('transactionId').value = '';
+    /**
+     * Perform the actual transaction deletion API call
+     * @param {string} transactionId - Transaction ID to delete
+     * @returns {Promise<Response>} Fetch response
+     */
+    async performDeleteTransaction(transactionId) {
+        return await fetch(`/transactions/api/transactions/${transactionId}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            }
+        });
     }
 
+    /**
+     * Set loading state for delete button
+     * @param {HTMLElement} button - Delete button element
+     * @param {boolean} isLoading - Whether to show loading state
+     */
+    setDeleteButtonLoading(button, isLoading) {
+        const spinner = button.querySelector('.spinner-border');
+        
+        if (isLoading) {
+            button.disabled = true;
+            if (spinner) spinner.classList.remove('d-none');
+        } else {
+            button.disabled = false;
+            if (spinner) spinner.classList.add('d-none');
+        }
+    }
+
+    /**
+     * Hide delete confirmation modal
+     */
+    hideDeleteModal() {
+        const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteTransactionModal'));
+        if (deleteModal) {
+            deleteModal.hide();
+        }
+    }
+
+    /**
+     * Reset transaction form
+     */
+    resetForm() {
+        const form = document.getElementById('transactionForm');
+        if (form) {
+            form.reset();
+            document.getElementById('transactionId').value = '';
+        }
+    }
+
+    /**
+     * Apply time filter and navigate to filtered view
+     * @param {string} filter - Time filter value
+     */
     applyTimeFilter(filter) {
-        // Store current scroll position before applying time filter
-        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-        sessionStorage.setItem('transactionScrollPosition', scrollPosition);
+        this.saveScrollPosition();
         
         const url = new URL(window.location);
         url.searchParams.set('filter', filter);
         url.searchParams.delete('start_date');
         url.searchParams.delete('end_date');
-        url.searchParams.delete('page'); // Reset to first page
+        url.searchParams.delete('page');
         
         window.location.href = url.toString();
     }
 
+    /**
+     * Check URL parameters and auto-open modal if requested
+     */
     checkAndOpenModal() {
         const urlParams = new URLSearchParams(window.location.search);
         const openModal = urlParams.get('openModal');
         
         if (openModal === 'addTransaction') {
-            // Wait a bit for the page to fully load, then open the modal
             setTimeout(() => {
                 this.openAddModal();
-                // Clean up the URL parameter
-                const url = new URL(window.location);
-                url.searchParams.delete('openModal');
-                window.history.replaceState({}, '', url.toString());
+                this.cleanupUrlParameter('openModal');
             }, 500);
         }
     }
+
+    /**
+     * Clean up URL parameter after use
+     * @param {string} paramName - Parameter name to remove
+     */
+    cleanupUrlParameter(paramName) {
+        const url = new URL(window.location);
+        url.searchParams.delete(paramName);
+        window.history.replaceState({}, '', url.toString());
+    }
 }
 
-// Initialize when DOM is loaded
+// Initialize transaction manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    const transactionManager = new TransactionManager();
+    new TransactionManager();
 });

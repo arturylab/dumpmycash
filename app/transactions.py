@@ -1,3 +1,17 @@
+"""
+Transaction management module for DumpMyCash.
+
+This module handles all transaction-related operations including:
+- Creating, reading, updating, and deleting transactions
+- Transaction filtering and search functionality
+- Statistics and reporting
+- CSV export functionality
+- Bulk operations
+
+All transactions are properly tracked with account balance updates
+and exclude internal transfers from most operations.
+"""
+
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, g, Response
 from app.auth import login_required, api_login_required
 from app.models import db, Transaction, Account, Category
@@ -6,18 +20,25 @@ from sqlalchemy import or_, and_, desc, func
 import csv
 import io
 
-transaction_bp = Blueprint('transactions', __name__, url_prefix='/transactions')
-
+# Initialize transaction blueprint
 transaction_bp = Blueprint('transactions', __name__, url_prefix='/transactions')
 
 def parse_datetime_local(date_string):
-    """Parse datetime string from frontend, treating it as local time"""
+    """
+    Parse datetime string from frontend, treating it as local time.
+    
+    Args:
+        date_string (str): Datetime string in ISO format or YYYY-MM-DDTHH:MM format
+        
+    Returns:
+        datetime: Parsed datetime object or current time if parsing fails
+    """
     if not date_string:
         return datetime.now()
     
     try:
         # The frontend sends datetime-local format: YYYY-MM-DDTHH:MM
-        # We need to parse this as local time, not UTC
+        # Parse this as local time, not UTC
         if 'T' in date_string:
             # Remove timezone info if present and parse as local time
             if date_string.endswith('Z'):
@@ -35,8 +56,19 @@ def parse_datetime_local(date_string):
         # If parsing fails, return current time
         return datetime.now()
 
+
 def get_date_range(filter_type, start_date_str=None, end_date_str=None):
-    """Obtener el rango de fechas basado en el tipo de filtro"""
+    """
+    Get date range based on filter type.
+    
+    Args:
+        filter_type (str): Type of filter ('today', 'week', 'month', 'quarter', 'year', 'custom', 'all')
+        start_date_str (str, optional): Start date for custom range in YYYY-MM-DD format
+        end_date_str (str, optional): End date for custom range in YYYY-MM-DD format
+        
+    Returns:
+        tuple: (start_date, end_date) or (None, None) for 'all' filter
+    """
     now = datetime.now()
     
     # Handle custom date range
@@ -53,20 +85,20 @@ def get_date_range(filter_type, start_date_str=None, end_date_str=None):
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif filter_type == 'week':
-        # Lunes de esta semana
+        # Monday of this week
         start_date = now - timedelta(days=now.weekday())
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
     elif filter_type == 'month' or not filter_type or filter_type not in ['today', 'week', 'quarter', 'year', 'all']:
-        # Primer día del mes actual (default para filtros inválidos)
+        # First day of current month (default for invalid filters)
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Último día del mes actual
+        # Last day of current month
         if now.month == 12:
             end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
         else:
             end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'quarter':
-        # Calcular el trimestre actual
+        # Calculate current quarter
         quarter = (now.month - 1) // 3 + 1
         start_month = (quarter - 1) * 3 + 1
         start_date = now.replace(month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -80,9 +112,9 @@ def get_date_range(filter_type, start_date_str=None, end_date_str=None):
             else:
                 end_date = now.replace(month=end_month + 1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'year':
-        # Primer día del año actual
+        # First day of current year
         start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Último día del año actual
+        # Last day of current year
         end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
     else:  # 'all'
         return None, None
@@ -92,45 +124,56 @@ def get_date_range(filter_type, start_date_str=None, end_date_str=None):
 @transaction_bp.route('/')
 @login_required
 def list_transactions():
-    """Mostrar la página de transacciones con todas las transacciones del usuario"""
-    # Obtener parámetros de filtrado
+    """
+    Display the transactions page with all user transactions.
+    
+    Supports filtering by:
+    - Account ID
+    - Category ID  
+    - Date range (today, week, month, quarter, year, custom, all)
+    - Search term
+    - Pagination
+    
+    Excludes transfer transactions from the main view.
+    """
+    # Get filter parameters
     account_id = request.args.get('account_id', type=int)
     category_id = request.args.get('category_id', type=int)
     date_range = request.args.get('date_range', 'last_30_days')
-    time_filter = request.args.get('filter')  # Solo si se pasa explícitamente
+    time_filter = request.args.get('filter')  # Only if explicitly passed
     start_date_str = request.args.get('start_date')  # For custom date range
     end_date_str = request.args.get('end_date')      # For custom date range
     search = request.args.get('search', '')
     page = request.args.get('page', 1, type=int)
     per_page = 20
     
-    # Construir query base - excluir categorías de Transfer
+    # Build base query - exclude Transfer categories
     query = Transaction.query.filter(
         Transaction.user_id == g.user.id,
-        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+        ~Transaction.category.has(Category.name == 'Transfer')  # Exclude transfers
     )
     
-    # Aplicar filtros
+    # Apply filters
     if account_id:
         query = query.filter(Transaction.account_id == account_id)
     
     if category_id:
         query = query.filter(Transaction.category_id == category_id)
     
-    # Nuevo filtro por tiempo (prioridad sobre date_range)
+    # Apply time filter (priority over date_range)
     if time_filter:
         if time_filter != 'all':
             start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
             if start_date and end_date:
                 query = query.filter(Transaction.date >= start_date, Transaction.date <= end_date)
     else:
-        # Si no hay filtro de tiempo especificado, usar 'month' como default
+        # If no time filter specified, use 'month' as default
         start_date, end_date = get_date_range('month', start_date_str, end_date_str)
         if start_date and end_date:
             query = query.filter(Transaction.date >= start_date, Transaction.date <= end_date)
         time_filter = 'month'  # Set for display purposes
     
-    # Filtro por búsqueda
+    # Apply search filter
     if search:
         query = query.filter(
             or_(
@@ -140,22 +183,22 @@ def list_transactions():
             )
         )
     
-    # Ordenar por fecha descendente
+    # Order by date descending
     query = query.order_by(desc(Transaction.date))
     
-    # Paginar resultados
+    # Paginate results
     transactions = query.paginate(
         page=page, per_page=per_page, error_out=False
     )
     
-    # Obtener cuentas y categorías para los filtros
+    # Get accounts and categories for filters
     accounts = Account.query.filter_by(user_id=g.user.id).all()
     categories = Category.query.filter_by(user_id=g.user.id).all()
     
-    # Calcular estadísticas basadas en el filtro aplicado - excluir transferencias
+    # Calculate statistics based on applied filter - exclude transfers
     stats_query = Transaction.query.filter(
         Transaction.user_id == g.user.id,
-        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+        ~Transaction.category.has(Category.name == 'Transfer')  # Exclude transfers
     )
     if time_filter:
         if time_filter != 'all':
@@ -163,12 +206,12 @@ def list_transactions():
             if start_date and end_date:
                 stats_query = stats_query.filter(Transaction.date >= start_date, Transaction.date <= end_date)
     else:
-        # Si no hay filtro de tiempo especificado, usar 'month' como default
+        # If no time filter specified, use 'month' as default
         start_date, end_date = get_date_range('month', start_date_str, end_date_str)
         if start_date and end_date:
             stats_query = stats_query.filter(Transaction.date >= start_date, Transaction.date <= end_date)
     
-    # Calcular estadísticas
+    # Calculate statistics
     total_income = stats_query.filter(
         Transaction.category.has(Category.type == 'income')
     ).with_entities(func.sum(Transaction.amount)).scalar() or 0
@@ -177,7 +220,7 @@ def list_transactions():
         Transaction.category.has(Category.type == 'expense')
     ).with_entities(func.sum(Transaction.amount)).scalar() or 0
     
-    # Obtener nombre para mostrar del filtro
+    # Get display names for filters
     filter_display_names = {
         'today': 'Today',
         'week': 'This Week', 
@@ -188,7 +231,7 @@ def list_transactions():
         'all': 'All Time'
     }
     
-    # Si no hay time_filter especificado, usar 'month' como default
+    # If no time_filter specified, use 'month' as default
     effective_filter = time_filter if time_filter else 'month'
     
     # For custom range, show the date range in display name
@@ -225,8 +268,19 @@ def list_transactions():
 @transaction_bp.route('/api/transactions')
 @api_login_required
 def api_list_transactions():
-    """API endpoint para obtener transacciones en formato JSON"""
-    # Obtener parámetros de filtrado
+    """
+    API endpoint to get transactions in JSON format.
+    
+    Supports filtering by:
+    - Account ID
+    - Category ID
+    - Date range
+    - Search term
+    - Pagination
+    
+    Excludes transfer transactions.
+    """
+    # Get filter parameters
     account_id = request.args.get('account_id', type=int)
     category_id = request.args.get('category_id', type=int)
     date_range = request.args.get('date_range', 'last_30_days')
@@ -234,20 +288,20 @@ def api_list_transactions():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    # Construir query base - excluir categorías de Transfer
+    # Build base query - exclude Transfer categories
     query = Transaction.query.filter(
         Transaction.user_id == g.user.id,
-        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+        ~Transaction.category.has(Category.name == 'Transfer')  # Exclude transfers
     )
     
-    # Aplicar filtros (mismo código que en list_transactions)
+    # Apply filters (same logic as list_transactions)
     if account_id:
         query = query.filter(Transaction.account_id == account_id)
     
     if category_id:
         query = query.filter(Transaction.category_id == category_id)
     
-    # Filtro por rango de fechas
+    # Apply date range filter
     if date_range == 'last_30_days':
         start_date = datetime.now() - timedelta(days=30)
         query = query.filter(Transaction.date >= start_date)
@@ -261,7 +315,7 @@ def api_list_transactions():
         start_date = datetime(datetime.now().year, 1, 1)
         query = query.filter(Transaction.date >= start_date)
     
-    # Filtro por búsqueda
+    # Apply search filter
     if search:
         query = query.filter(
             or_(
@@ -271,10 +325,10 @@ def api_list_transactions():
             )
         )
     
-    # Ordenar por fecha descendente
+    # Order by date descending
     query = query.order_by(desc(Transaction.date))
     
-    # Paginar resultados
+    # Paginate results
     transactions = query.paginate(
         page=page, per_page=per_page, error_out=False
     )
@@ -309,27 +363,45 @@ def api_list_transactions():
 @transaction_bp.route('/api/transactions', methods=['POST'])
 @api_login_required
 def api_create_transaction():
-    """API endpoint para crear una nueva transacción"""
+    """
+    API endpoint to create a new transaction.
+    
+    Required fields:
+    - amount: Transaction amount (float)
+    - account_id: ID of the account (must belong to user)
+    - category_id: ID of the category (must belong to user)
+    
+    Optional fields:
+    - description: Transaction description
+    - date: Transaction date (defaults to now)
+    
+    Returns:
+        JSON: Created transaction data with updated account balance
+        201: Transaction created successfully
+        400: Invalid data or missing required fields
+        404: Account or category not found
+        500: Server error
+    """
     try:
         data = request.get_json()
         
-        # Validar datos requeridos
+        # Validate required fields
         required_fields = ['amount', 'account_id', 'category_id']
         for field in required_fields:
             if field not in data or data[field] is None:
-                return jsonify({'error': f'Campo requerido: {field}'}), 400
+                return jsonify({'error': f'Required field: {field}'}), 400
         
-        # Validar que la cuenta pertenece al usuario
+        # Validate that account belongs to user
         account = Account.query.filter_by(id=data['account_id'], user_id=g.user.id).first()
         if not account:
-            return jsonify({'error': 'Cuenta no encontrada'}), 404
+            return jsonify({'error': 'Account not found'}), 404
         
-        # Validar que la categoría pertenece al usuario
+        # Validate that category belongs to user
         category = Category.query.filter_by(id=data['category_id'], user_id=g.user.id).first()
         if not category:
-            return jsonify({'error': 'Categoría no encontrada'}), 404
+            return jsonify({'error': 'Category not found'}), 404
         
-        # Crear nueva transacción
+        # Create new transaction
         transaction = Transaction(
             amount=float(data['amount']),
             description=data.get('description', ''),
@@ -341,38 +413,7 @@ def api_create_transaction():
         
         db.session.add(transaction)
         
-        # Actualizar balance de la cuenta
-        if category.type == 'income':
-            account.balance += transaction.amount
-        else:  # expense
-            account.balance -= transaction.amount
-        
-        db.session.commit()
-        
-        return jsonify({
-            'id': transaction.id,
-            'amount': transaction.amount,
-            'date': transaction.date.isoformat(),
-            'description': transaction.description,
-            'account': {
-                'id': transaction.account.id,
-                'name': transaction.account.name
-            },
-            'category': {
-                'id': transaction.category.id,
-                'name': transaction.category.name,
-                'type': transaction.category.type,
-                'unicode_emoji': transaction.category.unicode_emoji
-            }
-        }), 201
-        
-    except ValueError as e:
-        return jsonify({'error': 'Monto inválido'}), 400
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': 'Error al crear la transacción'}), 500
-        
-        # Actualizar balance de la cuenta
+        # Update account balance
         if category.type == 'income':
             account.balance += transaction.amount
         else:  # expense
@@ -398,16 +439,25 @@ def api_create_transaction():
             }
         }), 201
         
-    except ValueError as e:
-        return jsonify({'error': 'Datos inválidos'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid data'}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 @transaction_bp.route('/api/transactions/<int:transaction_id>')
 @api_login_required
 def api_get_transaction(transaction_id):
-    """API endpoint para obtener una transacción específica"""
+    """
+    API endpoint to get a specific transaction.
+    
+    Args:
+        transaction_id (int): ID of the transaction to retrieve
+        
+    Returns:
+        JSON: Transaction data
+        404: Transaction not found or doesn't belong to user
+    """
     transaction = Transaction.query.filter_by(
         id=transaction_id, 
         user_id=g.user.id
@@ -433,7 +483,21 @@ def api_get_transaction(transaction_id):
 @transaction_bp.route('/api/transactions/<int:transaction_id>', methods=['PUT'])
 @api_login_required
 def api_update_transaction(transaction_id):
-    """API endpoint para actualizar una transacción"""
+    """
+    API endpoint to update a transaction.
+    
+    Updates transaction fields and properly handles account balance changes
+    when the transaction amount, category, or account changes.
+    
+    Args:
+        transaction_id (int): ID of the transaction to update
+        
+    Returns:
+        JSON: Updated transaction data with new account balance
+        400: Invalid data
+        404: Transaction, account, or category not found
+        500: Server error
+    """
     try:
         transaction = Transaction.query.filter_by(
             id=transaction_id, 
@@ -442,34 +506,34 @@ def api_update_transaction(transaction_id):
         
         data = request.get_json()
         
-        # Guardar valores anteriores para revertir balance
+        # Save previous values to revert balance
         old_amount = transaction.amount
         old_category = transaction.category
         old_account = transaction.account
         
-        # Validar nueva cuenta si se cambió
+        # Validate new account if changed
         if 'account_id' in data and data['account_id'] != transaction.account_id:
             new_account = Account.query.filter_by(id=data['account_id'], user_id=g.user.id).first()
             if not new_account:
-                return jsonify({'error': 'Cuenta no encontrada'}), 404
+                return jsonify({'error': 'Account not found'}), 404
         else:
             new_account = old_account
         
-        # Validar nueva categoría si se cambió
+        # Validate new category if changed
         if 'category_id' in data and data['category_id'] != transaction.category_id:
             new_category = Category.query.filter_by(id=data['category_id'], user_id=g.user.id).first()
             if not new_category:
-                return jsonify({'error': 'Categoría no encontrada'}), 404
+                return jsonify({'error': 'Category not found'}), 404
         else:
             new_category = old_category
         
-        # Revertir balance anterior
+        # Revert previous balance
         if old_category.type == 'income':
             old_account.balance -= old_amount
         else:  # expense
             old_account.balance += old_amount
         
-        # Actualizar campos de la transacción
+        # Update transaction fields
         if 'amount' in data:
             transaction.amount = float(data['amount'])
         if 'description' in data:
@@ -481,7 +545,7 @@ def api_update_transaction(transaction_id):
         if 'date' in data:
             transaction.date = parse_datetime_local(data['date'])
         
-        # Aplicar nuevo balance
+        # Apply new balance
         if new_category.type == 'income':
             new_account.balance += transaction.amount
         else:  # expense
@@ -508,22 +572,35 @@ def api_update_transaction(transaction_id):
         })
         
     except ValueError:
-        return jsonify({'error': 'Datos inválidos'}), 400
+        return jsonify({'error': 'Invalid data'}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
+
 
 @transaction_bp.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_transaction(transaction_id):
-    """API endpoint para eliminar una transacción"""
+    """
+    API endpoint to delete a transaction.
+    
+    Properly reverts the account balance when deleting the transaction.
+    
+    Args:
+        transaction_id (int): ID of the transaction to delete
+        
+    Returns:
+        JSON: Success message with updated account balance
+        404: Transaction not found or doesn't belong to user
+        500: Server error
+    """
     transaction = Transaction.query.filter_by(
         id=transaction_id, 
         user_id=g.user.id
     ).first_or_404()
     
     try:
-        # Revertir balance de la cuenta
+        # Revert account balance
         account = transaction.account
         category = transaction.category
         
@@ -536,22 +613,34 @@ def api_delete_transaction(transaction_id):
         db.session.commit()
         
         return jsonify({
-            'message': 'Transacción eliminada exitosamente',
+            'message': 'Transaction deleted successfully',
             'account_balance': account.balance
         })
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 @transaction_bp.route('/api/statistics')
 @api_login_required
 def api_transaction_statistics():
-    """API endpoint para obtener estadísticas de transacciones"""
-    # Obtener rango de fechas
+    """
+    API endpoint to get transaction statistics.
+    
+    Calculates income, expense, and transaction count statistics
+    for a specified date range. Excludes transfer transactions.
+    
+    Query Parameters:
+        date_range (str): Date range filter ('last_30_days', 'last_3_months', 
+                         'last_6_months', 'this_year')
+    
+    Returns:
+        JSON: Statistics including totals and breakdowns by category
+    """
+    # Get date range
     date_range = request.args.get('date_range', 'last_30_days')
     
-    # Calcular fecha de inicio
+    # Calculate start date
     if date_range == 'last_30_days':
         start_date = datetime.now() - timedelta(days=30)
     elif date_range == 'last_3_months':
@@ -563,28 +652,28 @@ def api_transaction_statistics():
     else:
         start_date = datetime.now() - timedelta(days=30)
     
-    # Estadísticas generales
+    # General statistics
     total_income = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
         Transaction.category.has(Category.type == 'income'),
-        Transaction.category.has(Category.name != 'Transfer')  # Excluir transferencias
+        Transaction.category.has(Category.name != 'Transfer')  # Exclude transfers
     ).scalar() or 0
     
     total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
         Transaction.category.has(Category.type == 'expense'),
-        Transaction.category.has(Category.name != 'Transfer')  # Excluir transferencias
+        Transaction.category.has(Category.name != 'Transfer')  # Exclude transfers
     ).scalar() or 0
     
     transaction_count = Transaction.query.filter(
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
-        ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+        ~Transaction.category.has(Category.name == 'Transfer')  # Exclude transfers
     ).count()
     
-    # Gastos por categoría
+    # Expenses by category
     expenses_by_category = db.session.query(
         Category.name,
         Category.unicode_emoji,
@@ -593,10 +682,10 @@ def api_transaction_statistics():
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
         Category.type == 'expense',
-        Category.name != 'Transfer'  # Excluir categorías de transferencia
+        Category.name != 'Transfer'  # Exclude transfer categories
     ).group_by(Category.id, Category.name, Category.unicode_emoji).all()
     
-    # Ingresos por categoría
+    # Income by category
     income_by_category = db.session.query(
         Category.name,
         Category.unicode_emoji,
@@ -605,7 +694,7 @@ def api_transaction_statistics():
         Transaction.user_id == g.user.id,
         Transaction.date >= start_date,
         Category.type == 'income',
-        Category.name != 'Transfer'  # Excluir categorías de transferencia
+        Category.name != 'Transfer'  # Exclude transfer categories
     ).group_by(Category.id, Category.name, Category.unicode_emoji).all()
     
     return jsonify({
@@ -636,26 +725,41 @@ def api_transaction_statistics():
 @transaction_bp.route('/api/transactions/bulk', methods=['POST'])
 @api_login_required
 def api_bulk_operations():
-    """API endpoint para operaciones masivas en transacciones"""
+    """
+    API endpoint for bulk operations on transactions.
+    
+    Currently supports bulk deletion of transactions with proper
+    balance adjustment for each affected account.
+    
+    Request JSON:
+        operation (str): Type of operation ('delete')
+        transaction_ids (list): List of transaction IDs to operate on
+    
+    Returns:
+        JSON: Success message with operation count
+        400: Invalid request data
+        404: Some transactions not found
+        500: Server error
+    """
     try:
         data = request.get_json()
         operation = data.get('operation')
         transaction_ids = data.get('transaction_ids', [])
         
         if not operation or not transaction_ids:
-            return jsonify({'error': 'Operación y IDs de transacciones son requeridos'}), 400
+            return jsonify({'error': 'Operation and transaction IDs are required'}), 400
         
-        # Verificar que todas las transacciones pertenecen al usuario
+        # Verify all transactions belong to user
         transactions = Transaction.query.filter(
             Transaction.id.in_(transaction_ids),
             Transaction.user_id == g.user.id
         ).all()
         
         if len(transactions) != len(transaction_ids):
-            return jsonify({'error': 'Algunas transacciones no fueron encontradas'}), 404
+            return jsonify({'error': 'Some transactions were not found'}), 404
         
         if operation == 'delete':
-            # Eliminar transacciones y actualizar balances
+            # Delete transactions and update balances
             for transaction in transactions:
                 account = transaction.account
                 category = transaction.category
@@ -668,19 +772,31 @@ def api_bulk_operations():
                 db.session.delete(transaction)
             
             db.session.commit()
-            return jsonify({'message': f'{len(transactions)} transacciones eliminadas exitosamente'})
+            return jsonify({'message': f'{len(transactions)} transactions deleted successfully'})
         
         else:
-            return jsonify({'error': 'Operación no soportada'}), 400
+            return jsonify({'error': 'Operation not supported'}), 400
             
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 @transaction_bp.route('/export/csv')
 @login_required
 def export_csv():
-    """Export transactions to CSV format"""
+    """
+    Export transactions to CSV format.
+    
+    Applies the same filters as the main transaction list view
+    and exports all matching transactions (no pagination).
+    Excludes transfer transactions from export.
+    
+    Query Parameters:
+        Same as list_transactions view (account_id, category_id, filter, etc.)
+    
+    Returns:
+        CSV file download with transaction data
+    """
     try:
         # Get same filter parameters as list_transactions
         account_id = request.args.get('account_id', type=int)
@@ -690,10 +806,10 @@ def export_csv():
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         
-        # Build query with same logic as list_transactions - excluir transferencias
+        # Build query with same logic as list_transactions - exclude transfers
         query = Transaction.query.filter(
             Transaction.user_id == g.user.id,
-            ~Transaction.category.has(Category.name == 'Transfer')  # Excluir transferencias
+            ~Transaction.category.has(Category.name == 'Transfer')  # Exclude transfers
         )
         
         # Apply filters
@@ -761,7 +877,15 @@ def export_csv():
 @transaction_bp.route('/success/<operation>')
 @login_required
 def transaction_success(operation):
-    """Endpoint para mostrar mensajes de éxito después de operaciones de transacciones"""
+    """
+    Endpoint to show success messages after transaction operations.
+    
+    Args:
+        operation (str): Type of operation completed ('create', 'update', 'delete')
+    
+    Returns:
+        Redirect to transaction list with success flash message
+    """
     messages = {
         'create': 'Transaction created successfully!',
         'update': 'Transaction updated successfully!',
@@ -772,10 +896,22 @@ def transaction_success(operation):
     flash(message, 'success')
     return redirect(url_for('transactions.list_transactions'))
 
+
 @transaction_bp.route('/error/<operation>')
 @login_required
 def transaction_error(operation):
-    """Endpoint para mostrar mensajes de error después de operaciones de transacciones"""
+    """
+    Endpoint to show error messages after transaction operations.
+    
+    Args:
+        operation (str): Type of operation that failed
+    
+    Query Parameters:
+        message (str): Custom error message to display
+    
+    Returns:
+        Redirect to transaction list with error flash message
+    """
     error_message = request.args.get('message', 'An error occurred during the operation.')
     flash(error_message, 'error')
     return redirect(url_for('transactions.list_transactions'))

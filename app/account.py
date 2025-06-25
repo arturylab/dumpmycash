@@ -1,3 +1,8 @@
+"""
+Account blueprint for managing user accounts and transfers.
+Provides account CRUD operations, balance tracking, and transfer functionality.
+"""
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from app.models import db, Account, Transaction, Category, Transfer
 from app.auth import login_required
@@ -6,29 +11,36 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
+from flask_wtf.csrf import validate_csrf
+from werkzeug.exceptions import BadRequest
+
+# Configuration constants
+TRANSFER_CATEGORY_NAME = 'Transfer'
+DEFAULT_ACCOUNT_COLOR = '#FF6384'
+MAX_TRANSFERS_PER_PAGE = 100
 
 account_bp = Blueprint('account', __name__, url_prefix='/account')
 
 
-@account_bp.route('/')
-@login_required
-def index():
-    """Display all accounts for the current user."""
-    accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
+def _calculate_monthly_stats(user_id):
+    """
+    Calculate monthly income and expenses excluding transfers.
     
-    # Calculate summary statistics
-    total_balance = sum(account.balance for account in accounts)
-    
-    # Calculate this month's income and expenses from transactions
+    Args:
+        user_id (int): User ID
+        
+    Returns:
+        tuple: (monthly_income, monthly_expenses)
+    """
     current_month = datetime.now().replace(day=1)
     next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
     
-    # Get transactions for current month with proper joins - excluir transferencias
+    # Get transactions for current month excluding transfers
     monthly_transactions = db.session.query(Transaction).join(Account).join(Category).filter(
-        Account.user_id == g.user.id,
+        Account.user_id == user_id,
         Transaction.date >= current_month,
         Transaction.date < next_month,
-        Category.name != 'Transfer'  # Excluir categorías de transferencia
+        Category.name != TRANSFER_CATEGORY_NAME
     ).all()
     
     monthly_income = 0.0
@@ -40,6 +52,18 @@ def index():
         elif transaction.category and transaction.category.type == 'expense':
             monthly_expenses += transaction.amount
     
+    return monthly_income, monthly_expenses
+
+
+@account_bp.route('/')
+@login_required
+def index():
+    """Display all accounts for the current user with summary statistics."""
+    accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
+    
+    # Calculate summary statistics
+    total_balance = sum(account.balance for account in accounts)
+    monthly_income, monthly_expenses = _calculate_monthly_stats(g.user.id)
     net_worth = total_balance
     
     return render_template('dashboard/account.html', 
@@ -50,14 +74,55 @@ def index():
                          net_worth=net_worth)
 
 
+def _create_initial_deposit_if_needed(account, balance):
+    """
+    Create an initial deposit transaction if account has positive balance.
+    
+    Args:
+        account (Account): The account object
+        balance (float): Initial balance amount
+    """
+    if balance <= 0:
+        return
+    
+    # Create or find the "Initial Deposit" category
+    initial_deposit_category = Category.query.filter_by(
+        name='Initial Deposit',
+        type='income',
+        user_id=account.user_id
+    ).first()
+    
+    if not initial_deposit_category:
+        initial_deposit_category = Category(
+            name='Initial Deposit',
+            type='income',
+            unicode_emoji='💰',
+            user_id=account.user_id
+        )
+        db.session.add(initial_deposit_category)
+        db.session.flush()
+    
+    # Create the initial deposit transaction
+    initial_transaction = Transaction(
+        amount=balance,
+        description=f'Initial deposit for {account.name}',
+        account_id=account.id,
+        category_id=initial_deposit_category.id,
+        user_id=account.user_id,
+        date=datetime.now()
+    )
+    
+    db.session.add(initial_transaction)
+
+
 @account_bp.route('/create', methods=['GET', 'POST'])
 @login_required
 def create():
-    """Create a new account."""
+    """Create a new account with optional initial balance."""
     if request.method == 'POST':
         name = request.form.get('name')
         balance = request.form.get('balance', 0.0)
-        color = request.form.get('color', '#FF6384')
+        color = request.form.get('color', DEFAULT_ACCOUNT_COLOR)
         
         # Validation
         if not name:
@@ -82,36 +147,8 @@ def create():
             db.session.add(account)
             db.session.flush()  # Get the account ID
             
-            # If there's an initial balance > 0, create an initial deposit transaction
-            if balance > 0:
-                # Create or find the "Initial Deposit" category
-                initial_deposit_category = Category.query.filter_by(
-                    name='Initial Deposit',
-                    type='income',
-                    user_id=g.user.id
-                ).first()
-                
-                if not initial_deposit_category:
-                    initial_deposit_category = Category(
-                        name='Initial Deposit',
-                        type='income',
-                        unicode_emoji='💰',  # Money bag emoji
-                        user_id=g.user.id
-                    )
-                    db.session.add(initial_deposit_category)
-                    db.session.flush()  # Get the category ID
-                
-                # Create the initial deposit transaction
-                initial_transaction = Transaction(
-                    amount=balance,
-                    description=f'Initial deposit for {name}',
-                    account_id=account.id,
-                    category_id=initial_deposit_category.id,
-                    user_id=g.user.id,
-                    date=datetime.now()
-                )
-                
-                db.session.add(initial_transaction)
+            # Create initial deposit transaction if needed
+            _create_initial_deposit_if_needed(account, balance)
             
             db.session.commit()
             flash(f'Account "{name}" created successfully!', 'success')
@@ -129,10 +166,62 @@ def create():
     return redirect(url_for('account.index'))
 
 
+def _create_balance_adjustment_transaction(account, original_balance, new_balance):
+    """
+    Create a balance adjustment transaction when account balance is manually changed.
+    
+    Args:
+        account (Account): The account object
+        original_balance (float): Original balance amount
+        new_balance (float): New balance amount
+    """
+    balance_difference = new_balance - original_balance
+    
+    # Determine category name and type based on adjustment direction
+    if balance_difference > 0:
+        category_name = 'Balance Adjustment (Increase)'
+        category_type = 'income'
+        emoji = '📈'
+    else:
+        category_name = 'Balance Adjustment (Decrease)'
+        category_type = 'expense'
+        emoji = '📉'
+    
+    # Create or find the appropriate balance adjustment category
+    adjustment_category = Category.query.filter_by(
+        name=category_name,
+        type=category_type,
+        user_id=account.user_id
+    ).first()
+    
+    if not adjustment_category:
+        adjustment_category = Category(
+            name=category_name,
+            type=category_type,
+            unicode_emoji=emoji,
+            user_id=account.user_id
+        )
+        db.session.add(adjustment_category)
+        db.session.flush()
+    
+    # Create the balance adjustment transaction
+    adjustment_description = f'Manual balance adjustment: ${original_balance:.2f} → ${new_balance:.2f}'
+    adjustment_transaction = Transaction(
+        amount=abs(balance_difference),
+        description=adjustment_description,
+        account_id=account.id,
+        category_id=adjustment_category.id,
+        user_id=account.user_id,
+        date=datetime.now()
+    )
+    
+    db.session.add(adjustment_transaction)
+
+
 @account_bp.route('/edit/<int:account_id>', methods=['GET', 'POST'])
 @login_required
 def edit(account_id):
-    """Edit an existing account."""
+    """Edit an existing account with balance adjustment tracking."""
     account = Account.query.filter_by(id=account_id, user_id=g.user.id).first()
     
     if not account:
@@ -142,7 +231,7 @@ def edit(account_id):
     if request.method == 'POST':
         name = request.form.get('name')
         balance = request.form.get('balance')
-        color = request.form.get('color', account.color or '#FF6384')
+        color = request.form.get('color', account.color or DEFAULT_ACCOUNT_COLOR)
         
         # Validation
         if not name:
@@ -158,65 +247,22 @@ def edit(account_id):
         # Store original balance for comparison
         original_balance = account.balance
         
-        # Update account
+        # Update account properties
         account.name = name
         account.color = color
         
         try:
-            # If balance changed, create a balance adjustment transaction
+            # Create balance adjustment transaction if balance changed
             if new_balance != original_balance:
-                balance_difference = new_balance - original_balance
-                
-                # Determine category name and type based on adjustment direction
-                if balance_difference > 0:
-                    category_name = 'Balance Adjustment (Increase)'
-                    category_type = 'income'
-                    emoji = '📈'  # Chart increasing
-                else:
-                    category_name = 'Balance Adjustment (Decrease)'
-                    category_type = 'expense'
-                    emoji = '📉'  # Chart decreasing
-                
-                # Create or find the appropriate balance adjustment category
-                adjustment_category = Category.query.filter_by(
-                    name=category_name,
-                    type=category_type,
-                    user_id=g.user.id
-                ).first()
-                
-                if not adjustment_category:
-                    adjustment_category = Category(
-                        name=category_name,
-                        type=category_type,
-                        unicode_emoji=emoji,
-                        user_id=g.user.id
-                    )
-                    db.session.add(adjustment_category)
-                    db.session.flush()  # Get the category ID
-                
-                # Create the balance adjustment transaction
-                adjustment_description = f'Manual balance adjustment: ${original_balance:.2f} → ${new_balance:.2f}'
-                adjustment_transaction = Transaction(
-                    amount=abs(balance_difference),  # Always store positive amount
-                    description=adjustment_description,
-                    account_id=account.id,
-                    category_id=adjustment_category.id,
-                    user_id=g.user.id,
-                    date=datetime.now()
-                )
-                
-                db.session.add(adjustment_transaction)
+                _create_balance_adjustment_transaction(account, original_balance, new_balance)
+                flash('Balance adjustment transaction created.', 'info')
             
             # Update the account balance
             account.balance = new_balance
             
             db.session.commit()
+            flash(f'Account "{name}" updated successfully!', 'success')
             
-            if new_balance != original_balance:
-                flash(f'Account "{name}" updated successfully! Balance adjustment transaction created.', 'success')
-            else:
-                flash(f'Account "{name}" updated successfully!', 'success')
-                
         except IntegrityError:
             db.session.rollback()
             flash('Error updating account. Please try again.', 'error')
@@ -256,7 +302,7 @@ def delete(account_id):
         flash(f'Account "{account_name}" deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash('Error deleting account. Please try again.', 'error')
+        flash(f'Cannot delete account "{account_name}". Accounts with existing transactions or transfers cannot be deleted. Please remove all associated transactions first.', 'error')
     
     return redirect(url_for('account.index'))
 
@@ -279,10 +325,57 @@ def api_accounts():
     return jsonify(accounts_data)
 
 
+def _handle_request_response(is_ajax, message, status='success'):
+    """
+    Handle response for both AJAX and regular requests.
+    
+    Args:
+        is_ajax (bool): Whether this is an AJAX request
+        message (str): Message to display/return
+        status (str): Response status ('success' or 'error')
+        
+    Returns:
+        Response object
+    """
+    if is_ajax:
+        status_code = 200 if status == 'success' else 400
+        return jsonify({'status': status, 'message': message}), status_code
+    else:
+        flash(message, status)
+        return redirect(url_for('account.index'))
+
+
+def _validate_transfer_data(from_account_id, to_account_id, amount):
+    """
+    Validate transfer request data.
+    
+    Args:
+        from_account_id (str): Source account ID
+        to_account_id (str): Destination account ID
+        amount (str): Transfer amount
+        
+    Returns:
+        tuple: (is_valid, error_message, amount_float)
+    """
+    if not from_account_id or not to_account_id:
+        return False, 'Source and destination accounts are required.', None
+    
+    if from_account_id == to_account_id:
+        return False, 'Source and destination accounts must be different.', None
+    
+    try:
+        amount_float = float(amount)
+        if amount_float <= 0:
+            return False, 'Transfer amount must be positive.', None
+        return True, None, amount_float
+    except (ValueError, TypeError):
+        return False, 'Invalid transfer amount.', None
+
+
 @account_bp.route('/transfer', methods=['POST'])
 @login_required
 def transfer():
-    """Transfer money between accounts."""
+    """Transfer money between accounts with comprehensive validation."""
     from_account_id = request.form.get('from_account')
     to_account_id = request.form.get('to_account')
     amount = request.form.get('amount')
@@ -291,49 +384,26 @@ def transfer():
     # Check if this is an AJAX request
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     
-    def handle_error(message):
-        if is_ajax:
-            return jsonify({'status': 'error', 'message': message}), 400
-        else:
-            flash(message, 'error')
-            return redirect(url_for('account.index'))
-    
-    def handle_success(message):
-        if is_ajax:
-            return jsonify({'status': 'success', 'message': message})
-        else:
-            flash(message, 'success')
-            return redirect(url_for('account.index'))
-    
-    # Validation
-    if not from_account_id or not to_account_id:
-        return handle_error('Source and destination accounts are required.')
-    
-    if from_account_id == to_account_id:
-        return handle_error('Source and destination accounts must be different.')
-    
-    try:
-        amount = float(amount)
-        if amount <= 0:
-            return handle_error('Transfer amount must be positive.')
-    except (ValueError, TypeError):
-        return handle_error('Invalid transfer amount.')
+    # Validate transfer data
+    is_valid, error_message, amount_float = _validate_transfer_data(from_account_id, to_account_id, amount)
+    if not is_valid:
+        return _handle_request_response(is_ajax, error_message, 'error')
     
     # Get accounts and verify ownership
     from_account = Account.query.filter_by(id=from_account_id, user_id=g.user.id).first()
     to_account = Account.query.filter_by(id=to_account_id, user_id=g.user.id).first()
     
     if not from_account or not to_account:
-        return handle_error('Invalid accounts selected.')
+        return _handle_request_response(is_ajax, 'Invalid accounts selected.', 'error')
     
     # Check sufficient balance
-    if from_account.balance < amount:
-        return handle_error('Insufficient balance in source account.')
+    if from_account.balance < amount_float:
+        return _handle_request_response(is_ajax, 'Insufficient balance in source account.', 'error')
     
     try:
-        # Create the Transfer record (no transactions in Transaction table)
+        # Create the Transfer record
         transfer_record = Transfer(
-            amount=amount,
+            amount=amount_float,
             description=description,
             from_account_id=from_account.id,
             to_account_id=to_account.id,
@@ -343,18 +413,18 @@ def transfer():
         
         db.session.add(transfer_record)
         
-        # Update account balances directly (no transaction records)
-        from_account.balance -= amount
-        to_account.balance += amount
+        # Update account balances directly
+        from_account.balance -= amount_float
+        to_account.balance += amount_float
         
         db.session.commit()
         
-        success_message = f'Successfully transferred {format_currency(amount)} from {from_account.name} to {to_account.name}!'
-        return handle_success(success_message)
+        success_message = f'Successfully transferred {format_currency(amount_float)} from {from_account.name} to {to_account.name}!'
+        return _handle_request_response(is_ajax, success_message, 'success')
         
     except Exception as e:
         db.session.rollback()
-        return handle_error('Error processing transfer. Please try again.')
+        return _handle_request_response(is_ajax, 'Error processing transfer. Please try again.', 'error')
 
 
 @account_bp.route('/api/chart-data')
@@ -373,7 +443,7 @@ def api_chart_data():
         if account.balance > 0:  # Only show accounts with positive balance
             chart_data['labels'].append(account.name)
             chart_data['data'].append(float(account.balance))
-            chart_data['backgroundColor'].append(account.color or '#FF6384')
+            chart_data['backgroundColor'].append(account.color or DEFAULT_ACCOUNT_COLOR)
     
     return jsonify(chart_data)
 
@@ -381,32 +451,11 @@ def api_chart_data():
 @account_bp.route('/api/summary')
 @login_required
 def api_summary():
-    """API endpoint to get account summary as JSON."""
+    """API endpoint to get account summary statistics."""
     accounts = Account.query.filter_by(user_id=g.user.id).all()
     
     total_balance = sum(account.balance for account in accounts)
-    
-    # Calculate this month's income and expenses from transactions
-    current_month = datetime.now().replace(day=1)
-    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    
-    # Get transactions for current month with proper joins - excluir transferencias
-    monthly_transactions = db.session.query(Transaction).join(Account).join(Category).filter(
-        Account.user_id == g.user.id,
-        Transaction.date >= current_month,
-        Transaction.date < next_month,
-        Category.name != 'Transfer'  # Excluir categorías de transferencia
-    ).all()
-    
-    monthly_income = 0.0
-    monthly_expenses = 0.0
-    
-    for transaction in monthly_transactions:
-        if transaction.category and transaction.category.type == 'income':
-            monthly_income += transaction.amount
-        elif transaction.category and transaction.category.type == 'expense':
-            monthly_expenses += transaction.amount
-    
+    monthly_income, monthly_expenses = _calculate_monthly_stats(g.user.id)
     net_worth = total_balance
     
     return jsonify({
@@ -418,16 +467,46 @@ def api_summary():
     })
 
 
+def _format_transfer_data(transfer):
+    """
+    Format transfer data for API response.
+    
+    Args:
+        transfer (Transfer): Transfer object
+        
+    Returns:
+        dict: Formatted transfer data or None if invalid
+    """
+    try:
+        # Ensure accounts exist and belong to current user
+        if (not transfer.from_account or not transfer.to_account or
+            transfer.from_account.user_id != g.user.id or 
+            transfer.to_account.user_id != g.user.id):
+            return None
+            
+        return {
+            'id': transfer.id,
+            'description': transfer.description or f"From {transfer.from_account.name} to {transfer.to_account.name}",
+            'amount': float(transfer.amount),
+            'formatted_amount': format_currency(transfer.amount),
+            'date': transfer.date.strftime('%Y-%m-%d'),
+            'formatted_date': transfer.date.strftime('%b %d, %Y'),
+            'from_account': transfer.from_account.name,
+            'to_account': transfer.to_account.name,
+            'type': 'transfer'
+        }
+    except (AttributeError, Exception) as e:
+        # Log error but don't expose details to client
+        print(f"Error formatting transfer {transfer.id}: {str(e)}")
+        return None
+
+
 @account_bp.route('/api/recent-transfers')
 @login_required
 def recent_transfers():
     """Get recent quick transfers between accounts."""
     try:
-        # Check if user is properly authenticated
-        if not g.user or not g.user.id:
-            return jsonify({'status': 'error', 'message': 'User not authenticated'}), 401
-        
-        # Get recent transfers with explicit joins to avoid lazy loading issues
+        # Get recent transfers with explicit joins
         transfers = db.session.query(Transfer)\
             .options(joinedload(Transfer.from_account))\
             .options(joinedload(Transfer.to_account))\
@@ -435,49 +514,12 @@ def recent_transfers():
             .order_by(Transfer.date.desc(), Transfer.id.desc())\
             .limit(5).all()
         
-        if not transfers:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'transfers': [],
-                    'count': 0
-                }
-            })
-        
-        # Format transfers data
-        transfers_data = []
-        
-        for transfer in transfers:
-            try:
-                # Ensure accounts exist and are accessible
-                if not transfer.from_account or not transfer.to_account:
-                    print(f"Transfer {transfer.id} missing account relationships")
-                    continue
-                
-                # Check that accounts belong to the current user
-                if (transfer.from_account.user_id != g.user.id or 
-                    transfer.to_account.user_id != g.user.id):
-                    print(f"Transfer {transfer.id} has accounts belonging to different user")
-                    continue
-                    
-                transfers_data.append({
-                    'id': transfer.id,
-                    'description': transfer.description or f"From {transfer.from_account.name} to {transfer.to_account.name}",
-                    'amount': float(transfer.amount),
-                    'formatted_amount': format_currency(transfer.amount),
-                    'date': transfer.date.strftime('%Y-%m-%d'),
-                    'formatted_date': transfer.date.strftime('%b %d, %Y'),
-                    'from_account': transfer.from_account.name,
-                    'to_account': transfer.to_account.name,
-                    'type': 'transfer'
-                })
-            except AttributeError as attr_error:
-                # Skip transfers with missing account relationships
-                print(f"Skipping transfer {transfer.id} due to missing account: {str(attr_error)}")
-                continue
-            except Exception as transfer_error:
-                print(f"Error processing transfer {transfer.id}: {str(transfer_error)}")
-                continue
+        # Format transfers data, filtering out invalid ones
+        transfers_data = [
+            _format_transfer_data(transfer) 
+            for transfer in transfers
+        ]
+        transfers_data = [t for t in transfers_data if t is not None]
         
         return jsonify({
             'status': 'success',
@@ -489,8 +531,6 @@ def recent_transfers():
         
     except Exception as e:
         print(f"Error in recent_transfers endpoint: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'status': 'error', 'message': 'Error loading recent transfers'}), 500
 
 
@@ -499,10 +539,7 @@ def recent_transfers():
 def api_transfers():
     """API endpoint to get all transfers with pagination."""
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    
-    # Limit per_page to prevent abuse
-    per_page = min(per_page, 100)
+    per_page = min(request.args.get('per_page', 10, type=int), MAX_TRANSFERS_PER_PAGE)
     
     transfers_query = Transfer.query.filter_by(user_id=g.user.id)\
         .order_by(Transfer.date.desc(), Transfer.id.desc())
@@ -513,24 +550,24 @@ def api_transfers():
         error_out=False
     )
     
+    # Format transfers data using helper function
     transfers_data = []
     for transfer in transfers_paginated.items:
-        transfers_data.append({
-            'id': transfer.id,
-            'amount': float(transfer.amount),
-            'formatted_amount': format_currency(transfer.amount),
-            'date': transfer.date.isoformat(),
-            'formatted_date': transfer.date.strftime('%b %d, %Y at %I:%M %p'),
-            'description': transfer.description or f"Transfer from {transfer.from_account.name} to {transfer.to_account.name}",
-            'from_account': {
-                'id': transfer.from_account.id,
-                'name': transfer.from_account.name
-            },
-            'to_account': {
-                'id': transfer.to_account.id,
-                'name': transfer.to_account.name
-            }
-        })
+        formatted_data = _format_transfer_data(transfer)
+        if formatted_data:
+            # Add detailed account information for this endpoint
+            formatted_data.update({
+                'formatted_date': transfer.date.strftime('%b %d, %Y at %I:%M %p'),
+                'from_account': {
+                    'id': transfer.from_account.id,
+                    'name': transfer.from_account.name
+                },
+                'to_account': {
+                    'id': transfer.to_account.id,
+                    'name': transfer.to_account.name
+                }
+            })
+            transfers_data.append(formatted_data)
     
     return jsonify({
         'transfers': transfers_data,
@@ -548,7 +585,7 @@ def api_transfers():
 @account_bp.route('/api/transfer/<int:transfer_id>')
 @login_required
 def api_transfer_detail(transfer_id):
-    """API endpoint to get transfer details."""
+    """API endpoint to get detailed transfer information."""
     transfer = Transfer.query.filter_by(id=transfer_id, user_id=g.user.id).first()
     
     if not transfer:
@@ -583,32 +620,47 @@ def api_transfer_detail(transfer_id):
 @account_bp.route('/transfer/<int:transfer_id>/reverse', methods=['POST'])
 @login_required
 def delete_transfer(transfer_id):
-    """Delete a transfer and reverse the transaction."""
+    """Reverse a transfer by restoring original account balances."""
+    # Ensure this is an AJAX request
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return jsonify({'status': 'error', 'message': 'Invalid request method'}), 400
+    
+    # Validate CSRF token (skip in testing environment)
+    from flask import current_app
+    if current_app.config.get('WTF_CSRF_ENABLED', True):
+        try:
+            validate_csrf(request.form.get('csrf_token'))
+        except BadRequest:
+            return jsonify({'status': 'error', 'message': 'The CSRF token is missing.'}), 400
+    
     transfer = Transfer.query.filter_by(id=transfer_id, user_id=g.user.id).first()
     
     if not transfer:
         return jsonify({'status': 'error', 'message': 'Transfer not found'}), 404
     
     try:
-        # Get the accounts
+        # Get the accounts and transfer amount
         from_account = transfer.from_account
         to_account = transfer.to_account
         amount = transfer.amount
         
+        # Validate that accounts still exist and belong to user
+        if not from_account or not to_account:
+            return jsonify({'status': 'error', 'message': 'Associated accounts not found'}), 400
+        
+        if from_account.user_id != g.user.id or to_account.user_id != g.user.id:
+            return jsonify({'status': 'error', 'message': 'Unauthorized access to accounts'}), 403
+        
         # Reverse the transfer by updating account balances
-        from_account.balance += amount  # Add back to source
+        from_account.balance += amount  # Restore to source
         to_account.balance -= amount    # Remove from destination
         
         # Delete associated transactions if they exist
-        if transfer.from_transaction_id:
-            from_transaction = Transaction.query.get(transfer.from_transaction_id)
-            if from_transaction:
-                db.session.delete(from_transaction)
-        
-        if transfer.to_transaction_id:
-            to_transaction = Transaction.query.get(transfer.to_transaction_id)
-            if to_transaction:
-                db.session.delete(to_transaction)
+        for transaction_id in [transfer.from_transaction_id, transfer.to_transaction_id]:
+            if transaction_id:
+                transaction = Transaction.query.get(transaction_id)
+                if transaction:
+                    db.session.delete(transaction)
         
         # Delete the transfer record
         db.session.delete(transfer)
@@ -621,18 +673,24 @@ def delete_transfer(transfer_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"Error reversing transfer {transfer_id}: {str(e)}")  # Log for debugging
         return jsonify({
             'status': 'error', 
-            'message': f'Error reversing transfer: {str(e)}'
+            'message': 'Error reversing transfer. Please try again.'
         }), 500
+
+
+def _get_month_boundaries():
+    """Get current month start and end dates."""
+    current_month = datetime.now().replace(day=1)
+    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return current_month, next_month
 
 
 @account_bp.route('/api/transfer-summary')
 @login_required
 def api_transfer_summary():
     """API endpoint to get transfer summary statistics."""
-    from sqlalchemy import func
-    
     # Get transfer statistics
     total_transfers = Transfer.query.filter_by(user_id=g.user.id).count()
     
@@ -640,9 +698,8 @@ def api_transfer_summary():
     total_amount = db.session.query(func.sum(Transfer.amount))\
         .filter(Transfer.user_id == g.user.id).scalar() or 0.0
     
-    # Get transfers this month
-    current_month = datetime.now().replace(day=1)
-    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    # Get monthly statistics
+    current_month, next_month = _get_month_boundaries()
     
     monthly_transfers = Transfer.query.filter(
         Transfer.user_id == g.user.id,
@@ -672,13 +729,14 @@ def api_transfer_summary():
     for pair in account_pairs:
         from_account = Account.query.get(pair.from_account_id)
         to_account = Account.query.get(pair.to_account_id)
-        popular_pairs.append({
-            'from_account': from_account.name,
-            'to_account': to_account.name,
-            'count': pair.count,
-            'total_amount': float(pair.total_amount),
-            'formatted_amount': format_currency(pair.total_amount)
-        })
+        if from_account and to_account:  # Ensure accounts exist
+            popular_pairs.append({
+                'from_account': from_account.name,
+                'to_account': to_account.name,
+                'count': pair.count,
+                'total_amount': float(pair.total_amount),
+                'formatted_amount': format_currency(pair.total_amount)
+            })
     
     return jsonify({
         'total_transfers': total_transfers,

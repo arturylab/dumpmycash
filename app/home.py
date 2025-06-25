@@ -3,60 +3,109 @@ Home blueprint for the dashboard functionality.
 Provides overview statistics, recent transactions, and quick actions.
 """
 
-from flask import Blueprint, render_template, jsonify, request, current_app, g
-from sqlalchemy import func, and_, or_
-from datetime import datetime, timedelta
 import calendar
+from datetime import datetime, timedelta
+
+from flask import Blueprint, render_template, jsonify, request, current_app, g
+from sqlalchemy import func, and_
+
 from app.models import Transaction, Category, db
 from app.auth import login_required
 from app.utils import format_currency
-import calendar
 
 home = Blueprint('home', __name__, url_prefix='/home')
+
+# Constants for better maintainability
+TRANSFER_CATEGORY_NAME = 'Transfer'
+DEFAULT_STATS_DAYS = 30
+MAX_TRANSACTION_LIMIT = 50
+
+def _get_transaction_filter(user_id, transaction_type, start_date=None, exclude_transfers=True):
+    """
+    Build common transaction filter for database queries.
+    
+    Args:
+        user_id (int): User ID
+        transaction_type (str): 'income' or 'expense'
+        start_date (datetime, optional): Filter by date from this start date
+        exclude_transfers (bool): Whether to exclude transfer transactions
+        
+    Returns:
+        SQLAlchemy filter conditions
+    """
+    conditions = [
+        Transaction.user_id == user_id,
+        Transaction.category.has(Category.type == transaction_type)
+    ]
+    
+    if exclude_transfers:
+        conditions.append(Transaction.category.has(Category.name != TRANSFER_CATEGORY_NAME))
+    
+    if start_date:
+        conditions.append(Transaction.date >= start_date)
+    
+    return and_(*conditions)
+
+def _calculate_totals(user_id, start_date=None):
+    """
+    Calculate total income, expenses, and balance for a user.
+    
+    Args:
+        user_id (int): User ID
+        start_date (datetime, optional): Filter by date from this start date
+        
+    Returns:
+        tuple: (total_income, total_expenses, total_balance)
+    """
+    # Calculate total income
+    total_income = db.session.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        _get_transaction_filter(user_id, 'income', start_date)
+    ).scalar()
+    
+    # Calculate total expenses
+    total_expenses = db.session.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        _get_transaction_filter(user_id, 'expense', start_date)
+    ).scalar()
+    
+    return float(total_income), float(total_expenses), float(total_income - total_expenses)
+
+def _get_month_boundaries(year, month):
+    """
+    Get start and end datetime for a given month.
+    
+    Args:
+        year (int): Year
+        month (int): Month (1-12)
+        
+    Returns:
+        tuple: (month_start, month_end)
+    """
+    month_start = datetime(year, month, 1)
+    if month == 12:
+        month_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        month_end = datetime(year, month + 1, 1) - timedelta(days=1)
+    
+    return month_start, month_end
 
 
 @home.route('/')
 @login_required
 def dashboard():
     """Main dashboard view with overview statistics."""
-    # Get current date information
     now = datetime.now()
     current_month_start = datetime(now.year, now.month, 1)
     
-    # Calculate total balance (excluding transfers for consistency with account.py)
-    total_income = db.session.query(func.sum(Transaction.amount)).filter(
-        Transaction.user_id == g.user.id,
-        Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer'))
-    ).scalar() or 0
+    # Calculate total balance (all time)
+    total_income, total_expenses, total_balance = _calculate_totals(g.user.id)
     
-    total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
-        Transaction.user_id == g.user.id,
-        Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer'))
-    ).scalar() or 0
+    # Calculate current month statistics
+    month_income, month_expenses, month_net = _calculate_totals(g.user.id, current_month_start)
     
-    total_balance = total_income - total_expenses
-    
-    # Calculate current month income and expenses (excluding transfers)
-    month_income = db.session.query(
-        func.coalesce(func.sum(Transaction.amount), 0)
-    ).filter(
-        and_(
-            Transaction.user_id == g.user.id,
-            Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
-            Transaction.date >= current_month_start
-        )
-    ).scalar()
-    
-    month_expenses = db.session.query(
-        func.coalesce(func.sum(Transaction.amount), 0)
-    ).filter(
-        and_(
-            Transaction.user_id == g.user.id,
-            Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
-            Transaction.date >= current_month_start
-        )
-    ).scalar()
-
     return render_template('dashboard/home.html', 
                          title='Dashboard',
                          total_balance=total_balance,
@@ -64,7 +113,7 @@ def dashboard():
                          total_expenses=total_expenses,
                          month_income=month_income,
                          month_expenses=month_expenses,
-                         month_net=month_income - month_expenses,
+                         month_net=month_net,
                          current_month=calendar.month_name[now.month])
 
 
@@ -74,56 +123,28 @@ def api_stats():
     """API endpoint for dashboard statistics."""
     try:
         # Get date range from query parameters
-        days = request.args.get('days', 30, type=int)
-        start_date = datetime.now() - timedelta(days=days)
+        days = request.args.get('days', DEFAULT_STATS_DAYS, type=int)
+        start_date = datetime.now() - timedelta(days=days) if days > 0 else None
         
-        # Calculate statistics (excluding transfers for consistency)
-        total_income = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.user_id == g.user.id,
-            Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer'))
-        ).scalar() or 0
+        # Calculate total statistics (all time)
+        total_income, total_expenses, total_balance = _calculate_totals(g.user.id)
         
-        total_expenses = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.user_id == g.user.id,
-            Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer'))
-        ).scalar() or 0
+        # Calculate period statistics
+        period_income, period_expenses, period_net = _calculate_totals(g.user.id, start_date)
         
-        total_balance = total_income - total_expenses
-        
-        period_income = db.session.query(
-            func.coalesce(func.sum(Transaction.amount), 0)
-        ).filter(
-            and_(
-                Transaction.user_id == g.user.id,
-                Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
-                Transaction.date >= start_date
-            )
-        ).scalar()
-        
-        period_expenses = db.session.query(
-            func.coalesce(func.sum(Transaction.amount), 0)
-        ).filter(
-            and_(
-                Transaction.user_id == g.user.id,
-                Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
-                Transaction.date >= start_date
-            )
-        ).scalar()
-        
+        # Get transaction count for the period
         transaction_count = db.session.query(func.count(Transaction.id)).filter(
-            and_(
-                Transaction.user_id == g.user.id,
-                Transaction.date >= start_date
-            )
+            Transaction.user_id == g.user.id,
+            Transaction.date >= start_date if start_date else True
         ).scalar()
         
         return jsonify({
             'status': 'success',
             'data': {
-                'total_balance': float(total_balance),
-                'period_income': float(period_income),
-                'period_expenses': float(period_expenses),
-                'period_net': float(period_income - period_expenses),
+                'total_balance': total_balance,
+                'period_income': period_income,
+                'period_expenses': period_expenses,
+                'period_net': period_net,
                 'transaction_count': transaction_count,
                 'period_days': days
             }
@@ -140,14 +161,16 @@ def api_stats():
 @home.route('/api/recent-transactions')
 @login_required
 def api_recent_transactions():
-    """API endpoint for recent transactions. (Currently not used in dashboard)"""
+    """API endpoint for recent transactions. Used for transaction history displays."""
     try:
-        limit = request.args.get('limit', 10, type=int)
-        limit = min(limit, 50)  # Cap at 50 transactions
+        limit = min(request.args.get('limit', 10, type=int), MAX_TRANSACTION_LIMIT)
         
         transactions = Transaction.query.filter(
             Transaction.user_id == g.user.id
-        ).order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).all()
+        ).order_by(
+            Transaction.date.desc(), 
+            Transaction.id.desc()
+        ).limit(limit).all()
         
         return jsonify({
             'status': 'success',
@@ -176,25 +199,26 @@ def api_recent_transactions():
 def api_category_breakdown():
     """API endpoint for category spending breakdown."""
     try:
-        # Get date range from query parameters
-        days = request.args.get('days', 30, type=int)
-        start_date = datetime.now() - timedelta(days=days)
-        transaction_type = request.args.get('type', 'expense')  # 'income' or 'expense'
+        # Get query parameters
+        days = request.args.get('days', DEFAULT_STATS_DAYS, type=int)
+        transaction_type = request.args.get('type', 'expense')
+        start_date = datetime.now() - timedelta(days=days) if days > 0 else None
         
-        # Get category breakdown (excluding transfers)
-        categories = db.session.query(
+        # Validate transaction type
+        if transaction_type not in ['income', 'expense']:
+            transaction_type = 'expense'
+        
+        # Build query for category breakdown
+        query = db.session.query(
             Category.name,
             func.sum(Transaction.amount).label('total')
         ).join(Transaction).filter(
-            and_(
-                Transaction.user_id == g.user.id,
-                Category.type == transaction_type,
-                Category.name != 'Transfer',  # Exclude transfers
-                Transaction.date >= start_date
-            )
+            _get_transaction_filter(g.user.id, transaction_type, start_date)
         ).group_by(Category.id, Category.name).order_by(
             func.sum(Transaction.amount).desc()
-        ).all()
+        )
+        
+        categories = query.all()
         
         # Calculate total for percentage calculation
         total_amount = sum(float(cat.total) for cat in categories)
@@ -225,14 +249,13 @@ def api_category_breakdown():
 @home.route('/api/monthly-trend')
 @login_required
 def api_monthly_trend():
-    """API endpoint for monthly income/expense trend. (Currently not used in dashboard)"""
+    """API endpoint for monthly income/expense trend data."""
     try:
-        # Get last 12 months of data
         months = []
         current_date = datetime.now()
         
         for i in range(12):
-            # Calculate month start and end
+            # Calculate month and year
             if current_date.month - i <= 0:
                 month = current_date.month - i + 12
                 year = current_date.year - 1
@@ -240,33 +263,24 @@ def api_monthly_trend():
                 month = current_date.month - i
                 year = current_date.year
             
-            month_start = datetime(year, month, 1)
-            if month == 12:
-                month_end = datetime(year + 1, 1, 1) - timedelta(days=1)
-            else:
-                month_end = datetime(year, month + 1, 1) - timedelta(days=1)
+            # Get month boundaries
+            month_start, month_end = _get_month_boundaries(year, month)
             
-            # Get income and expenses for this month (excluding transfers)
+            # Calculate monthly statistics with proper date filtering
             month_income = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
-                and_(
-                    Transaction.user_id == g.user.id,
-                    Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
-                    Transaction.date >= month_start,
-                    Transaction.date <= month_end
-                )
+                _get_transaction_filter(g.user.id, 'income'),
+                Transaction.date >= month_start,
+                Transaction.date <= month_end
             ).scalar()
             
             month_expenses = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
-                and_(
-                    Transaction.user_id == g.user.id,
-                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
-                    Transaction.date >= month_start,
-                    Transaction.date <= month_end
-                )
+                _get_transaction_filter(g.user.id, 'expense'),
+                Transaction.date >= month_start,
+                Transaction.date <= month_end
             ).scalar()
             
             months.append({
@@ -297,20 +311,14 @@ def api_monthly_trend():
 @home.route('/api/daily-activity')
 @login_required
 def api_daily_activity():
-    """API endpoint for daily activity chart data for the current month. (Currently not used in dashboard)"""
+    """API endpoint for daily activity chart data for the current month."""
     try:
-        # Get current month
         now = datetime.now()
         current_month_start = datetime(now.year, now.month, 1)
         
         # Calculate last day of current month
-        if now.month == 12:
-            next_month_start = datetime(now.year + 1, 1, 1)
-        else:
-            next_month_start = datetime(now.year, now.month + 1, 1)
-        current_month_end = next_month_start - timedelta(days=1)
+        month_start, current_month_end = _get_month_boundaries(now.year, now.month)
         
-        # Get all days in the current month
         days_data = []
         current_date = current_month_start
         
@@ -318,28 +326,22 @@ def api_daily_activity():
             day_start = current_date
             day_end = current_date.replace(hour=23, minute=59, second=59)
             
-            # Calculate daily income (excluding transfers)
+            # Calculate daily income
             daily_income = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
-                and_(
-                    Transaction.user_id == g.user.id,
-                    Transaction.category.has(and_(Category.type == 'income', Category.name != 'Transfer')),
-                    Transaction.date >= day_start,
-                    Transaction.date <= day_end
-                )
+                _get_transaction_filter(g.user.id, 'income'),
+                Transaction.date >= day_start,
+                Transaction.date <= day_end
             ).scalar()
             
-            # Calculate daily expenses (excluding transfers)
+            # Calculate daily expenses
             daily_expenses = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
-                and_(
-                    Transaction.user_id == g.user.id,
-                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
-                    Transaction.date >= day_start,
-                    Transaction.date <= day_end
-                )
+                _get_transaction_filter(g.user.id, 'expense'),
+                Transaction.date >= day_start,
+                Transaction.date <= day_end
             ).scalar()
             
             days_data.append({
@@ -364,39 +366,35 @@ def api_daily_activity():
             'message': 'Failed to fetch daily activity data'
         }), 500
 
-
 @home.route('/api/weekly-expenses')
 @login_required
 def api_weekly_expenses():
     """API endpoint for weekly expenses breakdown."""
     try:
-        # Get current week (Monday to Sunday)
         now = datetime.now()
         # Get the start of the week (Monday)
         start_of_week = now - timedelta(days=now.weekday())
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         
         weekly_data = []
+        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         
         for i in range(7):  # Monday to Sunday
             day_date = start_of_week + timedelta(days=i)
             day_end = day_date.replace(hour=23, minute=59, second=59)
             
-            # Get expenses for this day (excluding transfers)
+            # Get expenses for this day
             daily_expenses = db.session.query(
                 func.coalesce(func.sum(Transaction.amount), 0)
             ).filter(
-                and_(
-                    Transaction.user_id == g.user.id,
-                    Transaction.category.has(and_(Category.type == 'expense', Category.name != 'Transfer')),
-                    Transaction.date >= day_date,
-                    Transaction.date <= day_end
-                )
+                _get_transaction_filter(g.user.id, 'expense'),
+                Transaction.date >= day_date,
+                Transaction.date <= day_end
             ).scalar()
             
             weekly_data.append({
                 'day': day_date.strftime('%Y-%m-%d'),
-                'day_name': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
+                'day_name': day_names[i],
                 'expenses': float(daily_expenses)
             })
         

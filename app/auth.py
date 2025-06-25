@@ -7,6 +7,19 @@ from app.models import db, User
 
 auth_bp = Blueprint('auth', __name__)
 
+# Password complexity patterns
+PASSWORD_PATTERNS = {
+    'letter': re.compile(r'[a-zA-Z]'),
+    'digit': re.compile(r'\d'),
+    'special': re.compile(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?~`]')
+}
+
+# Email validation pattern
+EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+# Username validation pattern
+USERNAME_PATTERN = re.compile(r'^[a-zA-Z0-9]+$')
+
 def login_required(view):
     """
     View decorator that redirects anonymous users to the login page.
@@ -33,23 +46,53 @@ def api_login_required(view):
         return view(**kwargs)
     return wrapped_view
 
-def is_password_complex(password):
+def validate_password_complexity(password):
     """
-    Checks if the password meets complexity requirements.
-    - At least 8 characters
-    - At least one uppercase or lowercase letter
-    - At least one digit
-    - At least one special character
+    Validates password complexity requirements.
+    
+    Args:
+        password (str): The password to validate
+        
+    Returns:
+        tuple: (is_valid: bool, error_message: str)
     """
     if len(password) < 8:
         return False, "Password must be at least 8 characters long."
-    if not re.search(r"[a-zA-Z]", password):
+    
+    if not PASSWORD_PATTERNS['letter'].search(password):
         return False, "Password must contain at least one letter."
-    if not re.search(r"\d", password):
+    
+    if not PASSWORD_PATTERNS['digit'].search(password):
         return False, "Password must contain at least one digit."
-    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?~`]", password):
+    
+    if not PASSWORD_PATTERNS['special'].search(password):
         return False, "Password must contain at least one special character."
+    
     return True, ""
+
+def validate_email_format(email):
+    """
+    Validates email format using regex pattern.
+    
+    Args:
+        email (str): The email to validate
+        
+    Returns:
+        bool: True if email format is valid, False otherwise
+    """
+    return bool(EMAIL_PATTERN.match(email))
+
+def validate_username_format(username):
+    """
+    Validates username format (alphanumeric only).
+    
+    Args:
+        username (str): The username to validate
+        
+    Returns:
+        bool: True if username format is valid, False otherwise
+    """
+    return bool(USERNAME_PATTERN.match(username)) and len(username) >= 3
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -96,36 +139,40 @@ def register():
         email = request.form.get('email', '').strip()
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        error_occurred = False
-        error_messages = []
-
-        if not email or not username or not password:
-            error_messages.append('Email, username, and password are required.')
-            error_occurred = True
         
-        is_complex, complexity_message = is_password_complex(password)
-        if not is_complex and password:
-            error_messages.append(complexity_message)
-            error_occurred = True
-
-
-        if not error_occurred:
-            if User.query.filter_by(email=email).first():
-                error_messages.append('Email already registered.')
-                error_occurred = True
-
-            if User.query.filter_by(username=username).first():
-                error_messages.append('Username already taken.')
-                error_occurred = True
+        # Validate required fields
+        if not all([email, username, password]):
+            flash('Email, username, and password are required.', 'danger')
+            return render_template('auth/login.html', 
+                                   open_register_modal=True, 
+                                   input_email=email, 
+                                   input_username=username)
         
-        if error_occurred:
-            for msg in error_messages:
-                flash(msg, 'danger')
+        # Validate password complexity
+        is_complex, complexity_message = validate_password_complexity(password)
+        if not is_complex:
+            flash(complexity_message, 'danger')
             return render_template('auth/login.html', 
                                    open_register_modal=True, 
                                    input_email=email, 
                                    input_username=username)
 
+        # Check for existing users
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered.', 'danger')
+            return render_template('auth/login.html', 
+                                   open_register_modal=True, 
+                                   input_email=email, 
+                                   input_username=username)
+
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken.', 'danger')
+            return render_template('auth/login.html', 
+                                   open_register_modal=True, 
+                                   input_email=email, 
+                                   input_username=username)
+
+        # Create new user
         new_user = User(email=email, username=username)
         new_user.set_password(password)
         
@@ -135,7 +182,7 @@ def register():
         flash('Registration successful! You can now log in.', 'success')
         return redirect(url_for('auth.login'))
 
-
+    # Handle GET request
     open_modal_flag = request.args.get('open_register_modal', 'false').lower() == 'true'
     return render_template('auth/login.html', open_register_modal=open_modal_flag)
 
@@ -144,33 +191,45 @@ def register():
 def check_username_availability():
     """Checks if a username is available for registration via AJAX."""
     data = request.get_json()
+    if not data:
+        return jsonify({'available': False, 'message': 'Invalid request data.'}), 400
+        
     username = data.get('username', '').strip()
+    
+    # Validate username format
     if not username:
         return jsonify({'available': False, 'message': 'Username cannot be empty.'}), 400
-    if len(username) < 3:
-        return jsonify({'available': False, 'message': 'Username must be at least 3 characters.'}), 400
-    if not re.match(r"^[a-zA-Z0-9]+$", username):
-        return jsonify({'available': False, 'message': 'Username can only contain letters and numbers.'}), 400
     
-    user = User.query.filter_by(username=username).first()
-    if user:
+    if not validate_username_format(username):
+        if len(username) < 3:
+            return jsonify({'available': False, 'message': 'Username must be at least 3 characters.'}), 400
+        else:
+            return jsonify({'available': False, 'message': 'Username can only contain letters and numbers.'}), 400
+    
+    # Check availability
+    if User.query.filter_by(username=username).first():
         return jsonify({'available': False, 'message': 'Username already taken.'})
+    
     return jsonify({'available': True, 'message': 'Username is available!'})
 
 @auth_bp.route('/check_email', methods=['POST'])
 def check_email_availability():
     """Checks if an email is available for registration via AJAX."""
     data = request.get_json()
+    if not data:
+        return jsonify({'available': False, 'message': 'Invalid request data.'}), 400
+        
     email = data.get('email', '').strip()
 
+    # Validate email format
     if not email:
         return jsonify({'available': False, 'message': 'Email cannot be empty.'}), 400
     
-
-    if "@" not in email or "." not in email.split('@')[-1] or len(email.split('@')[-1].split('.')[0]) == 0 or len(email.split('.')[-1]) < 2 :
+    if not validate_email_format(email):
         return jsonify({'available': False, 'message': 'Invalid email format.'})
 
-    user = User.query.filter_by(email=email).first()
-    if user:
+    # Check availability
+    if User.query.filter_by(email=email).first():
         return jsonify({'available': False, 'message': 'Email already registered.'})
+    
     return jsonify({'available': True, 'message': 'Email is available!'})

@@ -1,77 +1,157 @@
+/**
+ * Account Management JavaScript
+ * Handles account operations, transfers, charts, and modal interactions
+ */
+
+// Configuration constants
+const ACCOUNT_CONFIG = {
+    defaultColor: '#555555',
+    chartColors: [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+        '#9966FF', '#FF9F40', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'
+    ],
+    colorNames: {
+        '#555555': 'Light Black',
+        '#36A2EB': 'Blue', 
+        '#FFCE56': 'Yellow',
+        '#4BC0C0': 'Teal',
+        '#9966FF': 'Purple',
+        '#FF9F40': 'Orange',
+        '#FF6B6B': 'Red',
+        '#4ECDC4': 'Mint',
+        '#45B7D1': 'Sky Blue',
+        '#96CEB4': 'Light Green'
+    },
+    apiEndpoints: {
+        accounts: '/account/api/accounts',
+        chartData: '/account/api/chart-data',
+        recentTransfers: '/account/api/recent-transfers',
+        transferDetail: '/account/api/transfer/',
+        transfer: '/account/transfer'
+    }
+};
+
+// Account state management
+const accountState = {
+    currentTransferId: null,
+    isInitialized: false
+};
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Apply account colors from data attributes
+    initializeAccountPage();
+});
+
+// Clean up resources when leaving the page
+window.addEventListener('beforeunload', function() {
+    cleanupAccountPage();
+});
+
+/**
+ * Initialize the account page
+ */
+function initializeAccountPage() {
+    if (accountState.isInitialized) {
+        console.warn('Account page already initialized');
+        return;
+    }
+    
+    applyAccountColors();
+    checkAndOpenModal();
+    initializeEventListeners();
+    loadPageData();
+    
+    accountState.isInitialized = true;
+}
+
+/**
+ * Apply account colors from data attributes
+ */
+function applyAccountColors() {
     const accountTitles = document.querySelectorAll('.account-title[data-account-color]');
     accountTitles.forEach(title => {
         const color = title.getAttribute('data-account-color');
         if (color && color !== '#000000' && color !== '') {
-            // Apply custom color with high specificity
             title.classList.remove('text-muted');
             title.style.setProperty('color', color, 'important');
         } else {
-            // Apply muted color if no custom color is set or if it's the default black
             title.classList.add('text-muted');
         }
     });
-    
-    // Check URL parameters to auto-open modals
-    checkAndOpenModal();
-    
+}
+
+/**
+ * Initialize all event listeners
+ */
+function initializeEventListeners() {
     // Color dropdown event listeners for Add Account modal
-    const colorOptions = document.querySelectorAll('.color-option');
+    setupColorDropdownListeners('.color-option', 'accountColor', 'selectedColorDot', 'selectedColorName');
+    
+    // Color dropdown event listeners for Edit Account modal  
+    setupColorDropdownListeners('.edit-color-option', 'editAccountColor', 'editSelectedColorDot', 'editSelectedColorName');
+    
+    // Account action buttons
+    setupAccountActionListeners();
+    
+    // Transfer functionality
+    setupTransferListeners();
+}
+
+/**
+ * Setup color dropdown event listeners
+ */
+function setupColorDropdownListeners(selector, hiddenInputId, dotId, nameId) {
+    const colorOptions = document.querySelectorAll(selector);
     colorOptions.forEach(option => {
         option.addEventListener('click', function(e) {
             e.preventDefault();
             const color = this.getAttribute('data-color');
             const name = this.getAttribute('data-name');
             
-            // Update hidden input
-            document.getElementById('accountColor').value = color;
-            
-            // Update button display
-            document.getElementById('selectedColorDot').style.backgroundColor = color;
-            document.getElementById('selectedColorName').textContent = name;
+            updateColorSelection(hiddenInputId, dotId, nameId, color, name);
         });
     });
+}
+
+/**
+ * Update color selection in UI
+ */
+function updateColorSelection(hiddenInputId, dotId, nameId, color, name) {
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const dot = document.getElementById(dotId);
+    const nameElement = document.getElementById(nameId);
     
-    // Color dropdown event listeners for Edit Account modal  
-    const editColorOptions = document.querySelectorAll('.edit-color-option');
-    editColorOptions.forEach(option => {
-        option.addEventListener('click', function(e) {
-            e.preventDefault();
-            const color = this.getAttribute('data-color');
-            const name = this.getAttribute('data-name');
-            
-            // Update hidden input
-            document.getElementById('editAccountColor').value = color;
-            
-            // Update button display
-            document.getElementById('editSelectedColorDot').style.backgroundColor = color;
-            document.getElementById('editSelectedColorName').textContent = name;
-        });
-    });
-    
+    if (hiddenInput) hiddenInput.value = color;
+    if (dot) dot.style.backgroundColor = color;
+    if (nameElement) nameElement.textContent = name;
+}
+
+/**
+ * Setup account action event listeners
+ */
+function setupAccountActionListeners() {
     // Edit Account buttons
-    document.querySelectorAll('.edit-account-btn').forEach(function(btn) {
+    document.querySelectorAll('.edit-account-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
-            const balance = this.getAttribute('data-balance');
-            const color = this.getAttribute('data-color') || '#555555';
-            editAccount(id, name, balance, color);
+            const { id, name, balance, color } = this.dataset;
+            editAccount(id, name, balance, color || ACCOUNT_CONFIG.defaultColor);
         });
     });
     
     // Delete Account buttons
-    document.querySelectorAll('.delete-account-btn').forEach(function(btn) {
+    document.querySelectorAll('.delete-account-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
+            const { id, name } = this.dataset;
             deleteAccount(id, name);
         });
     });
-    
+}
+
+/**
+ * Setup transfer-related event listeners
+ */
+function setupTransferListeners() {
     // Quick Transfer button
     const quickTransferBtn = document.getElementById('quickTransferBtn');
     if (quickTransferBtn) {
@@ -80,12 +160,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showTransferModal();
         });
     }
-    
-    // Load and display pie chart
-    loadAccountChart();
-    
-    // Load recent transfers
-    loadRecentTransfers();
     
     // Transfer form handler
     const transferForm = document.querySelector('#transferModal form');
@@ -96,72 +170,84 @@ document.addEventListener('DOMContentLoaded', function() {
     // Reverse Transfer confirmation handler
     const confirmReverseBtn = document.getElementById('confirmReverseTransfer');
     if (confirmReverseBtn) {
-        confirmReverseBtn.addEventListener('click', function() {
-            const transferId = this.getAttribute('data-transfer-id');
-            if (!transferId) return;
-            
-            // Show loading state
-            const spinner = confirmReverseBtn.querySelector('.spinner-border');
-            const originalHTML = confirmReverseBtn.innerHTML;
-            confirmReverseBtn.disabled = true;
-            spinner.classList.remove('d-none');
-            
-            // Get CSRF token from meta tag
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            
-            if (!csrfToken) {
-                showAlert('CSRF token not found. Please refresh the page and try again.', 'danger');
-                confirmReverseBtn.disabled = false;
-                spinner.classList.add('d-none');
-                return;
-            }
-            
-            // Create form data with CSRF token
-            const formData = new FormData();
-            formData.append('csrf_token', csrfToken);
-            
-            fetch(`/account/transfer/${transferId}/reverse`, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showAlert(data.message, 'success');
-                    
-                    // Close modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('reverseTransferModal'));
-                    if (modal) {
-                        modal.hide();
-                    }
-                    
-                    // Refresh data
-                    loadRecentTransfers();
-                    loadAccountChart();
-                    
-                    // Reload page to update account balances
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
-                } else {
-                    showAlert(data.message || 'Error reversing transfer', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error reversing transfer:', error);
-                showAlert('Error reversing transfer. Please try again.', 'danger');
-            })
-            .finally(() => {
-                // Reset button state
-                confirmReverseBtn.disabled = false;
-                confirmReverseBtn.innerHTML = originalHTML;
-            });
-        });
+        confirmReverseBtn.addEventListener('click', handleReverseTransfer);
     }
-});
+}
+
+/**
+ * Load initial page data
+ */
+function loadPageData() {
+    loadAccountChart();
+    loadRecentTransfers();
+}
+
+/**
+ * Handle reverse transfer confirmation
+ */
+function handleReverseTransfer() {
+    const transferId = this.getAttribute('data-transfer-id');
+    if (!transferId) return;
+    
+    const originalHTML = this.innerHTML;
+    
+    // Show loading state
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reversing...';
+    
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+        showAlert('CSRF token not found. Please refresh the page and try again.', 'danger');
+        this.disabled = false;
+        this.innerHTML = originalHTML;
+        return;
+    }
+    
+    // Create form data with CSRF token
+    const formData = new FormData();
+    formData.append('csrf_token', csrfToken);
+    
+    fetch(`/account/transfer/${transferId}/reverse`, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'success') {
+            showAlert(data.message, 'success');
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('reverseTransferModal'));
+            if (modal) modal.hide();
+            
+            // Reload page after short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            showAlert(data.message || 'Error reversing transfer', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error reversing transfer:', error);
+        showAlert('Error reversing transfer. Please try again.', 'danger');
+    })
+    .finally(() => {
+        // Reset button state
+        this.disabled = false;
+        this.innerHTML = originalHTML;
+    });
+}
 
 function editAccount(id, name, balance, color) {
     document.getElementById('editAccountName').value = name;

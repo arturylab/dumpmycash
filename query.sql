@@ -4,6 +4,11 @@ SELECT * FROM categories;
 SELECT * FROM transactions;
 SELECT * FROM transfers;
 
+DELETE FROM transactions WHERE user_id = 1;
+DELETE FROM accounts WHERE user_id = 1;
+DELETE FROM categories WHERE user_id = 1;
+DELETE FROM transfers WHERE user_id = 1;
+
 DELETE FROM accounts WHERE user_id <> 1;
 DELETE FROM categories WHERE user_id <> 1;
 DELETE FROM transactions WHERE user_id <> 1;

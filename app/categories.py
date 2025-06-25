@@ -1,66 +1,83 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, g
+"""
+Category management module for DumpMyCash.
+
+This module handles all category-related operations including:
+- Creating, reading, updating, and deleting categories
+- Category filtering and statistics
+- Time-based analysis
+- Top expense categories reporting
+
+All categories are properly isolated by user and support both income and expense types.
+"""
+
+from flask import Blueprint, render_template, request, jsonify, g
 from app.auth import login_required, api_login_required
 from app import db
 from app.models import Category, Transaction
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from datetime import datetime, timedelta
 
+# Initialize category blueprint
 category_bp = Blueprint('categories', __name__, url_prefix='/categories')
 
+# Configuration constants
+DEFAULT_TIME_FILTER = 'month'
+TOP_CATEGORIES_LIMIT = 10
+DEFAULT_EMOJI_INCOME = '💰'
+DEFAULT_EMOJI_EXPENSE = '💸'
+
+
 def get_date_range(filter_type):
-    """Obtener el rango de fechas basado en el tipo de filtro"""
+    """
+    Get date range based on filter type.
+    
+    Args:
+        filter_type (str): Type of filter ('today', 'week', 'month', 'quarter', 'year', 'all')
+        
+    Returns:
+        tuple: (start_date, end_date) or (None, None) for 'all' filter
+    """
     now = datetime.now()
     
     if filter_type == 'today':
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif filter_type == 'week':
-        # Lunes de esta semana
+        # Monday of this week
         start_date = now - timedelta(days=now.weekday())
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
     elif filter_type == 'month':
-        # Primer día del mes actual
+        # First day of current month
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Último día del mes actual
+        # Last day of current month
         if now.month == 12:
             end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
         else:
             end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'quarter':
-        # Primer día del trimestre actual
-        current_month = now.month
-        if current_month in [1, 2, 3]:
-            quarter_start_month = 1
-        elif current_month in [4, 5, 6]:
-            quarter_start_month = 4
-        elif current_month in [7, 8, 9]:
-            quarter_start_month = 7
-        else:
-            quarter_start_month = 10
+        # Calculate current quarter
+        quarter = (now.month - 1) // 3 + 1
+        start_month = (quarter - 1) * 3 + 1
+        start_date = now.replace(month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
         
-        start_date = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        # Último día del trimestre
-        if quarter_start_month == 10:
+        # Last day of the quarter
+        end_month = start_month + 2
+        if end_month == 12:
             end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
         else:
-            end_month = quarter_start_month + 2
-            if end_month == 12:
-                end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
-            else:
-                end_date = now.replace(month=end_month + 1, day=1) - timedelta(microseconds=1)
+            end_date = now.replace(month=end_month + 1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'year':
-        # Primer día del año actual
+        # First day of current year
         start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Último día del año actual
+        # Last day of current year
         end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
     elif filter_type == 'all':
         return None, None
-    else:  # Filtro inválido, por defecto usar 'month'
-        # Primer día del mes actual
+    else:  # Invalid filter, default to 'month'
+        # First day of current month
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Último día del mes actual
+        # Last day of current month
         if now.month == 12:
             end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
         else:
@@ -68,54 +85,54 @@ def get_date_range(filter_type):
     
     return start_date, end_date
 
-@category_bp.route('/')
-@login_required
-def list_categories():
-    """Mostrar la página de categorías con todas las categorías del usuario"""
-    # Obtener el filtro de tiempo de la query string, por defecto 'all'
-    time_filter = request.args.get('filter', 'all')
-    start_date, end_date = get_date_range(time_filter)
+
+def _build_category_query_with_totals(category_type, start_date=None, end_date=None):
+    """
+    Build a query to get categories with their transaction totals.
     
-    # Base query for categories
-    income_query = db.session.query(
+    Args:
+        category_type (str): 'income' or 'expense'
+        start_date (datetime, optional): Start date for filtering transactions
+        end_date (datetime, optional): End date for filtering transactions
+        
+    Returns:
+        SQLAlchemy query: Query object ready for execution
+    """
+    query = db.session.query(
         Category,
         func.coalesce(func.sum(Transaction.amount), 0).label('total')
     ).outerjoin(Transaction, Category.id == Transaction.category_id)
     
-    expense_query = db.session.query(
-        Category,
-        func.coalesce(func.sum(Transaction.amount), 0).label('total')
-    ).outerjoin(Transaction, Category.id == Transaction.category_id)
-    
-    # Apply date filter if not 'all'
+    # Apply date filter if provided
     if start_date and end_date:
-        income_query = income_query.filter(
-            db.or_(
-                Transaction.date == None,  # Categories without transactions
-                db.and_(Transaction.date >= start_date, Transaction.date <= end_date)
-            )
-        )
-        expense_query = expense_query.filter(
-            db.or_(
-                Transaction.date == None,  # Categories without transactions
-                db.and_(Transaction.date >= start_date, Transaction.date <= end_date)
+        query = query.filter(
+            or_(
+                Transaction.date == None,
+                and_(Transaction.date >= start_date, Transaction.date <= end_date)
             )
         )
     
     # Apply category filters
-    income_categories_query = income_query.filter(
+    query = query.filter(
         Category.user_id == g.user.id,
-        Category.type == 'income'
-    ).group_by(Category.id).all()
+        Category.type == category_type
+    ).group_by(Category.id)
     
-    expense_categories_query = expense_query.filter(
-        Category.user_id == g.user.id,
-        Category.type == 'expense'
-    ).group_by(Category.id).all()
+    return query
+
+
+def _format_category_data(categories_query_result):
+    """
+    Format category data for template rendering.
     
-    # Format the results for template
-    income_categories = []
-    for category, total in income_categories_query:
+    Args:
+        categories_query_result: Result from category query with totals
+        
+    Returns:
+        list: Formatted category dictionaries
+    """
+    categories = []
+    for category, total in categories_query_result:
         category_dict = {
             'id': category.id,
             'name': category.name,
@@ -123,38 +140,59 @@ def list_categories():
             'unicode_emoji': category.unicode_emoji,
             'total': float(total)
         }
-        income_categories.append(category_dict)
+        categories.append(category_dict)
+    return categories
+
+
+def _get_filter_display_names():
+    """
+    Get mapping of filter types to display names.
     
-    expense_categories = []
-    for category, total in expense_categories_query:
-        category_dict = {
-            'id': category.id,
-            'name': category.name,
-            'type': category.type,
-            'unicode_emoji': category.unicode_emoji,
-            'total': float(total)
-        }
-        expense_categories.append(category_dict)
-    
-    # Calcular estadísticas
-    total_income_categories = len(income_categories)
-    total_expense_categories = len(expense_categories)
-    
-    # Calculate total amounts
-    total_income = sum(cat['total'] for cat in income_categories)
-    total_expenses = sum(cat['total'] for cat in expense_categories)
-    
-    # Get filter display name
-    filter_names = {
+    Returns:
+        dict: Mapping of filter keys to display names
+    """
+    return {
         'today': 'Today',
         'week': 'This Week',
         'month': 'This Month',
+        'quarter': 'This Quarter',
         'year': 'This Year',
         'all': 'All Time'
     }
+
+
+@category_bp.route('/')
+@login_required
+def list_categories():
+    """
+    Display the categories page with all user categories.
     
-    # Default to all for invalid filters
-    display_filter = time_filter if time_filter in filter_names else 'all'
+    Supports filtering by time period and shows statistics for each category.
+    Excludes transfer transactions from calculations.
+    """
+    # Get time filter from query string, default to 'all'
+    time_filter = request.args.get('filter', DEFAULT_TIME_FILTER)
+    start_date, end_date = get_date_range(time_filter)
+    
+    # Get categories with totals using helper functions
+    income_categories_result = _build_category_query_with_totals('income', start_date, end_date).all()
+    expense_categories_result = _build_category_query_with_totals('expense', start_date, end_date).all()
+    
+    # Format data for template
+    income_categories = _format_category_data(income_categories_result)
+    expense_categories = _format_category_data(expense_categories_result)
+    
+    # Calculate statistics
+    total_income_categories = len(income_categories)
+    total_expense_categories = len(expense_categories)
+    total_income = sum(cat['total'] for cat in income_categories)
+    total_expenses = sum(cat['total'] for cat in expense_categories)
+    
+    # Get filter display names
+    filter_names = _get_filter_display_names()
+    
+    # Default to 'month' for invalid filters
+    display_filter = time_filter if time_filter in filter_names else DEFAULT_TIME_FILTER
     
     return render_template('dashboard/categories.html',
                          income_categories=income_categories,
@@ -164,14 +202,15 @@ def list_categories():
                          total_income=total_income,
                          total_expenses=total_expenses,
                          current_filter=display_filter,
-                         filter_display_name=filter_names.get(display_filter, 'All Time'))
+                         filter_display_name=filter_names.get(display_filter, 'This Month'))
 
-# API Endpoints para operaciones CRUD
+
+# API Endpoints for CRUD operations
 
 @category_bp.route('/api/categories', methods=['GET'])
 @api_login_required
 def api_get_categories():
-    """API endpoint para obtener todas las categorías del usuario"""
+    """API endpoint to get all user categories."""
     try:
         categories = Category.query.filter_by(user_id=g.user.id).all()
         categories_data = []
@@ -182,7 +221,7 @@ def api_get_categories():
                 'name': cat.name,
                 'type': cat.type,
                 'type_label': 'Income' if cat.type == 'income' else 'Expense',
-                'unicode_emoji': cat.unicode_emoji or '📂',
+                'unicode_emoji': cat.unicode_emoji,
                 'user_id': cat.user_id
             })
         
@@ -193,42 +232,38 @@ def api_get_categories():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error retrieving categories: {str(e)}'
         }), 500
+
 
 @category_bp.route('/api/categories', methods=['POST'])
 @api_login_required
 def api_create_category():
-    """API endpoint para crear una nueva categoría"""
+    """API endpoint to create a new category."""
     try:
         data = request.get_json()
-        
-        # Debug logging
-        print(f"DEBUG: Received data: {data}")
-        print(f"DEBUG: Content-Type: {request.content_type}")
-        print(f"DEBUG: Raw data: {request.get_data()}")
         
         # Check if data is None (common issue with JSON parsing)
         if data is None:
             return jsonify({
                 'success': False,
-                'error': 'Invalid JSON data or Content-Type not set to application/json'
+                'error': 'Invalid JSON data provided'
             }), 400
         
-        # Validación básica
+        # Basic validation
         if not data.get('name'):
             return jsonify({
                 'success': False,
                 'error': 'Category name is required'
             }), 400
         
-        if 'type' not in data:
+        if 'type' not in data or data['type'] not in ['income', 'expense']:
             return jsonify({
                 'success': False,
-                'error': 'Category type is required'
+                'error': 'Valid category type is required (income or expense)'
             }), 400
         
-        # Verificar si ya existe una categoría con el mismo nombre y tipo
+        # Check if category with same name and type already exists
         existing_category = Category.query.filter_by(
             user_id=g.user.id,
             name=data['name'],
@@ -238,14 +273,17 @@ def api_create_category():
         if existing_category:
             return jsonify({
                 'success': False,
-                'error': 'A category with this name and type already exists'
+                'error': f'Category with name "{data["name"]}" and type "{data["type"]}" already exists'
             }), 400
         
-        # Crear nueva categoría
+        # Set default emoji based on type
+        default_emoji = DEFAULT_EMOJI_INCOME if data['type'] == 'income' else DEFAULT_EMOJI_EXPENSE
+        
+        # Create new category
         new_category = Category(
             name=data['name'],
             type=data['type'],
-            unicode_emoji=data.get('unicode_emoji', '📂'),
+            unicode_emoji=data.get('unicode_emoji', default_emoji),
             user_id=g.user.id
         )
         
@@ -269,13 +307,14 @@ def api_create_category():
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error creating category: {str(e)}'
         }), 500
+
 
 @category_bp.route('/api/categories/<int:category_id>', methods=['GET'])
 @api_login_required
 def api_get_category(category_id):
-    """API endpoint para obtener una categoría específica"""
+    """API endpoint to get a specific category."""
     try:
         cat = Category.query.filter_by(
             id=category_id,
@@ -303,13 +342,14 @@ def api_get_category(category_id):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error retrieving category: {str(e)}'
         }), 500
+
 
 @category_bp.route('/api/categories/<int:category_id>', methods=['PUT'])
 @api_login_required
 def api_update_category(category_id):
-    """API endpoint para actualizar una categoría"""
+    """API endpoint to update a category."""
     try:
         cat = Category.query.filter_by(
             id=category_id,
@@ -324,20 +364,20 @@ def api_update_category(category_id):
         
         data = request.get_json()
         
-        # Validación básica
+        # Basic validation
         if not data.get('name'):
             return jsonify({
                 'success': False,
                 'error': 'Category name is required'
             }), 400
         
-        if 'type' not in data:
+        if 'type' not in data or data['type'] not in ['income', 'expense']:
             return jsonify({
                 'success': False,
-                'error': 'Category type is required'
+                'error': 'Valid category type is required (income or expense)'
             }), 400
         
-        # Verificar si ya existe otra categoría con el mismo nombre y tipo
+        # Check if another category with same name and type exists
         existing_category = Category.query.filter_by(
             user_id=g.user.id,
             name=data['name'],
@@ -347,10 +387,10 @@ def api_update_category(category_id):
         if existing_category:
             return jsonify({
                 'success': False,
-                'error': 'Another category with this name and type already exists'
+                'error': f'Another category with name "{data["name"]}" and type "{data["type"]}" already exists'
             }), 400
         
-        # Actualizar categoría
+        # Update category
         cat.name = data['name']
         cat.type = data['type']
         cat.unicode_emoji = data.get('unicode_emoji', cat.unicode_emoji)
@@ -374,13 +414,14 @@ def api_update_category(category_id):
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error updating category: {str(e)}'
         }), 500
+
 
 @category_bp.route('/api/categories/<int:category_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_category(category_id):
-    """API endpoint para eliminar una categoría"""
+    """API endpoint to delete a category."""
     try:
         cat = Category.query.filter_by(
             id=category_id,
@@ -393,7 +434,7 @@ def api_delete_category(category_id):
                 'error': 'Category not found'
             }), 404
         
-        # Verificar si la categoría tiene transacciones asociadas
+        # Check if category has associated transactions
         transaction_count = Transaction.query.filter_by(
             category_id=category_id,
             user_id=g.user.id
@@ -402,35 +443,38 @@ def api_delete_category(category_id):
         if transaction_count > 0:
             return jsonify({
                 'success': False,
-                'error': f'No se puede eliminar la categoría "{cat.name}" porque tiene {transaction_count} transaccion{"es" if transaction_count > 1 else ""} asociada{"s" if transaction_count > 1 else ""}. Elimina primero las transacciones o asígnalas a otra categoría.'
+                'error': f'Cannot delete category "{cat.name}". It has {transaction_count} associated transaction{"s" if transaction_count > 1 else ""}. Please remove all transactions first.'
             }), 400
         
+        category_name = cat.name
         db.session.delete(cat)
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'Categoría "{cat.name}" eliminada exitosamente'
+            'message': f'Category "{category_name}" deleted successfully'
         })
         
     except Exception as e:
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error deleting category: {str(e)}'
         }), 500
 
-# Rutas adicionales para funcionalidades específicas
+
+# Additional functionality endpoints
 
 @category_bp.route('/api/categories/stats', methods=['GET'])
 @api_login_required
 def api_category_stats():
-    """API endpoint para obtener estadísticas de categorías con filtro de tiempo"""
+    """API endpoint to get category statistics with time filtering."""
     try:
-        # Obtener el filtro de tiempo de la query string
+        # Get time filter from query string
         time_filter = request.args.get('filter', 'month')
         start_date, end_date = get_date_range(time_filter)
         
+        # Count categories by type
         income_categories = Category.query.filter_by(
             user_id=g.user.id,
             type='income'
@@ -469,7 +513,7 @@ def api_category_stats():
         
         total_income = income_query.scalar() or 0.0
         total_expenses = expense_query.scalar() or 0.0
-        
+
         return jsonify({
             'success': True,
             'stats': {
@@ -477,6 +521,7 @@ def api_category_stats():
                 'expense_categories': expense_categories,
                 'total_income': float(total_income),
                 'total_expenses': float(total_expenses),
+                'net_income': float(total_income - total_expenses),
                 'filter': time_filter
             }
         })
@@ -484,131 +529,47 @@ def api_category_stats():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Error retrieving category statistics: {str(e)}'
         }), 500
+
 
 @category_bp.route('/api/categories/top-expenses', methods=['GET'])
 @api_login_required
 def api_top_expense_categories():
-    """API endpoint to get top 10 expense categories for current month"""
+    """API endpoint to get top expense categories for current month."""
     try:
         # Get current month date range
-        now = datetime.now()
-        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if now.month == 12:
-            end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
-        else:
-            end_date = now.replace(month=now.month + 1, day=1) - timedelta(microseconds=1)
+        start_date, end_date = get_date_range('month')
         
-        # Query top expense categories by amount for current month
-        top_categories = db.session.query(
+        # Query top expense categories with transaction totals
+        top_expenses = db.session.query(
             Category.name,
             Category.unicode_emoji,
-            func.sum(Transaction.amount).label('total_amount')
+            func.sum(Transaction.amount).label('total')
         ).join(Transaction).filter(
             Category.user_id == g.user.id,
             Category.type == 'expense',
             Transaction.date >= start_date,
             Transaction.date <= end_date
-        ).group_by(Category.id, Category.name, Category.unicode_emoji).order_by(
+        ).group_by(Category.id).order_by(
             func.sum(Transaction.amount).desc()
-        ).limit(10).all()
+        ).limit(TOP_CATEGORIES_LIMIT).all()
         
-        # Format the results
-        categories_data = []
-        for category in top_categories:
-            categories_data.append({
-                'name': category.name,
-                'emoji': category.unicode_emoji or '💸',
-                'amount': float(category.total_amount)
-            })
+        # Format data for chart
+        chart_data = {
+            'labels': [expense.name for expense in top_expenses],
+            'data': [float(expense.total) for expense in top_expenses],
+            'emojis': [expense.unicode_emoji or DEFAULT_EMOJI_EXPENSE for expense in top_expenses]
+        }
         
         return jsonify({
             'success': True,
-            'categories': categories_data,
-            'month': now.strftime('%B %Y')
+            'chart_data': chart_data,
+            'has_data': len(top_expenses) > 0
         })
         
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
-
-# Endpoint de prueba sin CSRF
-@category_bp.route('/api/test-categories', methods=['POST'])
-@api_login_required
-def api_test_create_category():
-    """API endpoint de prueba para crear una nueva categoría (sin CSRF)"""
-    try:
-        data = request.get_json()
-        
-        # Debug logging
-        print(f"DEBUG TEST: Received data: {data}")
-        print(f"DEBUG TEST: Content-Type: {request.content_type}")
-        print(f"DEBUG TEST: User: {g.user.username if g.user else 'None'}")
-        
-        # Check if data is None (common issue with JSON parsing)
-        if data is None:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid JSON data or Content-Type not set to application/json'
-            }), 400
-        
-        # Validación básica
-        if not data.get('name'):
-            return jsonify({
-                'success': False,
-                'error': 'Category name is required'
-            }), 400
-        
-        if 'type' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'Category type is required'
-            }), 400
-        
-        # Verificar si ya existe una categoría con el mismo nombre y tipo
-        existing_category = Category.query.filter_by(
-            user_id=g.user.id,
-            name=data['name'],
-            type=data['type']
-        ).first()
-        
-        if existing_category:
-            return jsonify({
-                'success': False,
-                'error': 'A category with this name and type already exists'
-            }), 400
-        
-        # Crear nueva categoría
-        new_category = Category(
-            name=data['name'] + ' (TEST)',  # Agregar TEST para distinguir
-            type=data['type'],
-            unicode_emoji=data.get('unicode_emoji', '🧪'),
-            user_id=g.user.id
-        )
-        
-        db.session.add(new_category)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Test category created successfully',
-            'category': {
-                'id': new_category.id,
-                'name': new_category.name,
-                'type': new_category.type,
-                'type_label': 'Income' if new_category.type == 'income' else 'Expense',
-                'unicode_emoji': new_category.unicode_emoji,
-                'user_id': new_category.user_id
-            }
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"DEBUG TEST: Exception: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
+            'error': f'Error retrieving top expense categories: {str(e)}'
         }), 500
