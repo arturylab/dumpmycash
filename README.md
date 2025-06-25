@@ -18,7 +18,7 @@ DumpMyCash is a simple, clean, and efficient tool for tracking personal finances
 
 1. **Clone and Setup**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/arturylab/dumpmycash
    cd DumpMyCash
    python -m venv venv
    source venv/bin/activate
