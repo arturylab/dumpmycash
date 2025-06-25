@@ -94,9 +94,3 @@ def categories():
 def profile():
     """Redirect to the profile blueprint."""
     return redirect(url_for('profile.index'))
-
-@dashboard.route('/settings')
-@login_required
-def settings():
-    """Displays the user's settings page."""
-    return render_template('dashboard/settings.html')
