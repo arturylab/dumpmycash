@@ -36,6 +36,12 @@ class TestDashboardAccess:
         assert response.status_code == 302
         assert '/login' in response.location
     
+    def test_help_requires_login(self, client):
+        """Test that help endpoint redirects to login when not authenticated."""
+        response = client.get('/help')
+        assert response.status_code == 302
+        assert '/login' in response.location
+    
 
 class TestDashboardAuthenticated:
     """Test dashboard endpoints when user is authenticated."""
@@ -80,9 +86,16 @@ class TestDashboardAuthenticated:
     
     def test_profile_authenticated_access(self, client):
         """Test that authenticated user can access profile page."""
-        response = client.get('/profile')
+        response = client.get('/profile/')  # Note the trailing slash for blueprint
         assert response.status_code == 200
         assert b"Profile" in response.data
+        assert b"DumpMyMoney" in response.data
+    
+    def test_help_authenticated_access(self, client):
+        """Test that authenticated user can access help page."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Help" in response.data
         assert b"DumpMyMoney" in response.data
 
 
@@ -111,6 +124,15 @@ class TestDashboardNavigation:
     def test_navigation_present_in_account(self, client):
         """Test that navigation is present in account page."""
         response = client.get('/account', follow_redirects=True)
+        assert response.status_code == 200
+        assert b"nav-link" in response.data
+        assert b"Home" in response.data
+        assert b"Account" in response.data
+        assert b"Transactions" in response.data
+    
+    def test_navigation_present_in_help(self, client):
+        """Test that navigation is present in help page."""
+        response = client.get('/help')
         assert response.status_code == 200
         assert b"nav-link" in response.data
         assert b"Home" in response.data
@@ -186,12 +208,25 @@ class TestDashboardContent:
     
     def test_profile_page_content(self, client):
         """Test that profile page contains expected content."""
-        response = client.get('/profile')
+        response = client.get('/profile/')  # Note the trailing slash for blueprint
         assert response.status_code == 200
         # Check for profile-specific content
         assert b"profile" in response.data.lower()
         # Should show user information
         assert b"contentuser" in response.data or b"content@example.com" in response.data
+    
+    def test_help_page_content(self, client):
+        """Test that help page contains expected content."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        # Check for help-specific content
+        assert b"help" in response.data.lower()
+        assert b"Quick Start Guide" in response.data
+        assert b"Features Overview" in response.data
+        assert b"Common Questions" in response.data
+        assert b"Beta Version" in response.data
+        assert b"Contact Developer" in response.data
+        assert b"arturylab@gmail.com" in response.data
 
 
 class TestDashboardSecurity:
@@ -232,7 +267,7 @@ class TestDashboardSecurity:
         response2 = client.get('/account', follow_redirects=True)
         assert response2.status_code == 200
         
-        response3 = client.get('/profile')
+        response3 = client.get('/profile/')  # Note the trailing slash for blueprint
         assert response3.status_code == 200
         
         # All should contain user info, confirming session is maintained
@@ -259,3 +294,88 @@ class TestDashboardSecurity:
         response = client.get('/home')
         assert response.status_code == 302
         assert '/login' in response.location
+
+
+class TestHelpPageFeatures:
+    """Test specific features of the help page."""
+    
+    @pytest.fixture(autouse=True)  
+    def setup_user(self, auth_client):
+        """Create and login a user for each test in this class."""
+        self.user = auth_client.create_user(
+            username="helpuser",
+            email="help@example.com", 
+            password="Password123!"
+        )
+        auth_client.login(email="help@example.com", password="Password123!")
+    
+    def test_help_quick_start_guide(self, client):
+        """Test that help page contains Quick Start Guide section."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Quick Start Guide" in response.data
+        assert b"Set Up Your Account" in response.data
+        assert b"Create Categories" in response.data
+        assert b"Add Transactions" in response.data
+        assert b"Monitor Your Progress" in response.data
+    
+    def test_help_features_overview(self, client):
+        """Test that help page contains Features Overview accordion."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Features Overview" in response.data
+        assert b"accordion" in response.data
+        assert b"Dashboard" in response.data
+        assert b"Account Management" in response.data
+        assert b"Transactions" in response.data
+        assert b"Categories" in response.data
+        assert b"Profile" in response.data
+    
+    def test_help_tips_best_practices(self, client):
+        """Test that help page contains Tips & Best Practices section."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Tips &amp; Best Practices" in response.data or b"Tips & Best Practices" in response.data
+        assert b"Regular Updates" in response.data
+        assert b"Category Organization" in response.data
+        assert b"Monitor Trends" in response.data
+        assert b"Data Security" in response.data
+    
+    def test_help_common_questions(self, client):
+        """Test that help page contains Common Questions section."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Common Questions" in response.data
+        assert b"How do I edit a transaction?" in response.data
+        assert b"Can I delete accounts" in response.data
+        assert b"Can I delete categories" in response.data
+        assert b"How is my balance calculated?" in response.data
+        assert b"Is my data secure?" in response.data
+    
+    def test_help_beta_information(self, client):
+        """Test that help page contains beta information and contact details."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        assert b"Beta Version" in response.data
+        assert b"beta phase as a demo" in response.data
+        assert b"Contact Developer" in response.data
+        assert b"arturylab@gmail.com" in response.data
+        assert b"mailto:" in response.data
+    
+    def test_help_highlighted_warnings(self, client):
+        """Test that help page properly highlights important warnings."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        # Check for highlighted warning sections
+        assert b"border-warning" in response.data
+        assert b"exclamation-triangle" in response.data
+        assert b"accounts with associated transactions or transfers cannot be deleted" in response.data
+        assert b"categories that don&#x27;t have any associated transactions" in response.data or b"categories that don't have any associated transactions" in response.data
+    
+    def test_help_javascript_functionality(self, client):
+        """Test that help page includes JavaScript for accordion functionality."""
+        response = client.get('/help')
+        assert response.status_code == 200
+        # Check for accordion JavaScript functionality
+        assert b"accordion" in response.data
+        assert b"bootstrap.Collapse" in response.data or b"data-bs-toggle" in response.data
