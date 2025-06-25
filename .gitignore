@@ -17,9 +17,9 @@ instance/
 
 # Database files
 *.db
-*.sql
 *.sqlite
 *.sqlite3
+query.sql
 
 # Testing
 .pytest_cache/
