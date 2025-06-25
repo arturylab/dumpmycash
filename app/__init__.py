@@ -94,3 +94,9 @@ def categories():
 def profile():
     """Redirect to the profile blueprint."""
     return redirect(url_for('profile.index'))
+
+@dashboard.route('/help')
+@login_required
+def help():
+    """Display the help page."""
+    return render_template('dashboard/help.html')

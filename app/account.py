@@ -302,7 +302,7 @@ def delete(account_id):
         flash(f'Account "{account_name}" deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Cannot delete account "{account_name}". Accounts with existing transactions or transfers cannot be deleted. Please remove all associated transactions first.', 'error')
+        flash(f'Cannot delete account "{account_name}". Accounts with existing transactions or transfers cannot be deleted.', 'error')
     
     return redirect(url_for('account.index'))
 

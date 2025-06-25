@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Help - DumpMyMoney{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-8">
+      <!-- Quick Start Guide -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+          <h3 class="card-title mb-0">
+            <i class="fas fa-rocket me-2"></i>Quick Start Guide
+          </h3>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <div class="d-flex align-items-start">
+                <div class="badge bg-primary rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 30px; height: 30px;">1</div>
+                <div>
+                  <h6 class="fw-bold">Set Up Your Account</h6>
+                  <p class="text-muted mb-0">Configure your initial balance and account preferences in the Account section.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex align-items-start">
+                <div class="badge bg-primary rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 30px; height: 30px;">2</div>
+                <div>
+                  <h6 class="fw-bold">Create Categories</h6>
+                  <p class="text-muted mb-0">Organize your expenses and income with custom categories for better tracking.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex align-items-start">
+                <div class="badge bg-primary rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 30px; height: 30px;">3</div>
+                <div>
+                  <h6 class="fw-bold">Add Transactions</h6>
+                  <p class="text-muted mb-0">Record your income and expenses using the quick add button or transactions page.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex align-items-start">
+                <div class="badge bg-primary rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 30px; height: 30px;">4</div>
+                <div>
+                  <h6 class="fw-bold">Monitor Your Progress</h6>
+                  <p class="text-muted mb-0">Use the dashboard to track your financial health and spending patterns.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Features Overview -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+          <h3 class="card-title mb-0">
+            <i class="fas fa-star me-2"></i>Features Overview
+          </h3>
+        </div>
+        <div class="card-body">
+          <div class="accordion" id="featuresAccordion">
+            <!-- Dashboard -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="dashboardHeading">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#dashboardCollapse" aria-expanded="true" aria-controls="dashboardCollapse">
+                  <i class="fas fa-home me-2"></i>Dashboard
+                </button>
+              </h2>
+              <div id="dashboardCollapse" class="accordion-collapse collapse show" aria-labelledby="dashboardHeading" data-bs-parent="#featuresAccordion">
+                <div class="accordion-body">
+                  <p>Your financial overview at a glance:</p>
+                  <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Current account balance</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Recent transaction history</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Spending summary by category</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Monthly financial insights</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Account Management -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="accountHeading">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accountCollapse" aria-expanded="false" aria-controls="accountCollapse">
+                  <i class="fas fa-wallet me-2"></i>Account Management
+                </button>
+              </h2>
+              <div id="accountCollapse" class="accordion-collapse collapse" aria-labelledby="accountHeading" data-bs-parent="#featuresAccordion">
+                <div class="accordion-body">
+                  <p>Manage your account settings and balance:</p>
+                  <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Set initial account balance</li>
+                    <li><i class="fas fa-check text-success me-2"></i>View current balance and history</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Track balance changes over time</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Account activity monitoring</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Transactions -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="transactionsHeading">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#transactionsCollapse" aria-expanded="false" aria-controls="transactionsCollapse">
+                  <i class="fas fa-exchange-alt me-2"></i>Transactions
+                </button>
+              </h2>
+              <div id="transactionsCollapse" class="accordion-collapse collapse" aria-labelledby="transactionsHeading" data-bs-parent="#featuresAccordion">
+                <div class="accordion-body">
+                  <p>Record and manage all your financial transactions:</p>
+                  <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Add income and expense transactions</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Categorize transactions for better organization</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Edit or delete existing transactions</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Filter and search transaction history</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Quick add button for fast entry</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Categories -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="categoriesHeading">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#categoriesCollapse" aria-expanded="false" aria-controls="categoriesCollapse">
+                  <i class="fas fa-tags me-2"></i>Categories
+                </button>
+              </h2>
+              <div id="categoriesCollapse" class="accordion-collapse collapse" aria-labelledby="categoriesHeading" data-bs-parent="#featuresAccordion">
+                <div class="accordion-body">
+                  <p>Organize your finances with custom categories:</p>
+                  <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Create custom income and expense categories</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Edit category names and types</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Delete unused categories</li>
+                    <li><i class="fas fa-check text-success me-2"></i>View spending by category</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Profile -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="profileHeading">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#profileCollapse" aria-expanded="false" aria-controls="profileCollapse">
+                  <i class="fas fa-user-circle me-2"></i>Profile
+                </button>
+              </h2>
+              <div id="profileCollapse" class="accordion-collapse collapse" aria-labelledby="profileHeading" data-bs-parent="#featuresAccordion">
+                <div class="accordion-body">
+                  <p>Manage your personal account settings:</p>
+                  <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Update username and email</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Change account password</li>
+                    <li><i class="fas fa-check text-success me-2"></i>View account statistics</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Account security settings</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tips & Best Practices -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+          <h3 class="card-title mb-0">
+            <i class="fas fa-lightbulb me-2"></i>Tips & Best Practices
+          </h3>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <h6 class="fw-bold text-primary">
+                  <i class="fas fa-calendar-check me-2"></i>Regular Updates
+                </h6>
+                <p class="text-muted mb-0">Record transactions daily or weekly to maintain accurate financial records and better spending awareness.</p>
+              </div>
+              <div class="mb-3">
+                <h6 class="fw-bold text-primary">
+                  <i class="fas fa-tags me-2"></i>Category Organization
+                </h6>
+                <p class="text-muted mb-0">Use specific categories like "Groceries," "Entertainment," and "Utilities" instead of generic ones for better insights.</p>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <h6 class="fw-bold text-primary">
+                  <i class="fas fa-chart-line me-2"></i>Monitor Trends
+                </h6>
+                <p class="text-muted mb-0">Review your dashboard regularly to identify spending patterns and make informed financial decisions.</p>
+              </div>
+              <div class="mb-3">
+                <h6 class="fw-bold text-primary">
+                  <i class="fas fa-shield-alt me-2"></i>Data Security
+                </h6>
+                <p class="text-muted mb-0">Use a strong password and log out when using shared computers to protect your financial information.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Common Questions -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">
+          <h3 class="card-title mb-0">
+            <i class="fas fa-question-circle me-2"></i>Common Questions
+          </h3>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-12">
+              <div class="mb-3">
+                <h6 class="fw-bold">How do I edit a transaction?</h6>
+                <p class="text-muted mb-0">Go to the Transactions page, find the transaction you want to edit, and click the edit icon. Make your changes and save.</p>
+              </div>
+              <div class="mb-3 p-3 border-start border-warning border-4 bg-light">
+                <h6 class="fw-bold text-warning">
+                  <i class="fas fa-exclamation-triangle me-2"></i>Can I delete accounts that have transactions or transfers?
+                </h6>
+                <p class="text-muted mb-0"><strong>No, accounts with associated transactions or transfers cannot be deleted.</strong> You must first remove or reassign all transactions and transfers before deleting an account.</p>
+              </div>
+              <div class="mb-3 p-3 border-start border-warning border-4 bg-light">
+                <h6 class="fw-bold text-warning">
+                  <i class="fas fa-exclamation-triangle me-2"></i>Can I delete categories that have transactions?
+                </h6>
+                <p class="text-muted mb-0"><strong>You can only delete categories that don't have any associated transactions.</strong> Remove or reassign transactions first.</p>
+              </div>
+              <div class="mb-3">
+                <h6 class="fw-bold">How is my balance calculated?</h6>
+                <p class="text-muted mb-0">Your balance starts with your initial amount and is updated by adding income transactions and subtracting expense transactions.</p>
+              </div>
+              <div class="mb-3">
+                <h6 class="fw-bold">Can I backup, restore, or permanently delete my data?</h6>
+                <p class="text-muted mb-0">Yes, you can save your data for backup purposes, restore from previous backups, or permanently delete all your data and account. These options are available in your Profile settings for complete data management control.</p>
+              </div>
+              <div class="mb-3">
+                <h6 class="fw-bold">Is my data secure?</h6>
+                <p class="text-muted mb-0">Yes, your data is protected with industry-standard security measures including encrypted connections and secure authentication.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact Support -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white">
+          <h3 class="card-title mb-0">
+            <i class="fas fa-headset me-2"></i>Need More Help?
+          </h3>
+        </div>
+        <div class="card-body text-center">
+          <div class="alert alert-info mb-3">
+            <i class="fas fa-flask me-2"></i>
+            <strong>Beta Version:</strong> This application is currently in beta phase as a demo. Your feedback is valuable to us!
+          </div>
+          <p class="mb-3">Found a bug, have suggestions for improvement, or need assistance? I'd love to hear from you!</p>
+          <div class="d-flex justify-content-center">
+            <a href="mailto:arturylab@gmail.com?subject=DumpMyMoney Beta Feedback" class="btn btn-outline-primary">
+              <i class="fas fa-envelope me-2"></i>Contact Developer
+            </a>
+          </div>
+          <div class="mt-3">
+            <small class="text-muted">
+              <i class="fas fa-info-circle me-1"></i>
+              Developer: <strong>arturylab@gmail.com</strong>
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Auto-expand accordion items based on URL hash
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.hash) {
+      const targetCollapse = document.querySelector(window.location.hash);
+      if (targetCollapse) {
+        const bsCollapse = new bootstrap.Collapse(targetCollapse, {
+          show: true
+        });
+      }
+    }
+  });
+</script>
+{% endblock %}

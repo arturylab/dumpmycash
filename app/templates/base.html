@@ -62,6 +62,11 @@
 
         <ul class="list-unstyled CTAs">
           <li>
+            <a href="{{ url_for('dashboard.help') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Help">
+              <i class="fas fa-question-circle"></i>
+            </a>
+          </li>
+          <li>
             <a href="#" class="logout" onclick="document.getElementById('logoutForm').submit(); return false;" data-bs-toggle="tooltip" data-bs-placement="right" title="Logout">
               <i class="fas fa-sign-out-alt"></i>
             </a>
@@ -105,6 +110,7 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                   <li><a class="dropdown-item" href="{{ url_for('dashboard.profile') }}"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('dashboard.help') }}"><i class="fas fa-question-circle me-2"></i>Help</a></li>
                   <li><hr class="dropdown-divider"></li>
                   <li><a class="dropdown-item text-danger" href="#" onclick="document.getElementById('logoutForm').submit(); return false;">
                     <i class="fas fa-sign-out-alt me-2"></i>Logout
@@ -137,6 +143,8 @@
                       <i class="fas fa-tags me-2"></i>Categories
                     {% elif 'profile' in request.endpoint %}
                       <i class="fas fa-user-circle me-2"></i>Profile
+                    {% elif 'help' in request.endpoint %}
+                      <i class="fas fa-question-circle me-2"></i>Help
                     {% else %}
                       {{ request.endpoint.split('.')[-1].title() }}
                     {% endif %}
@@ -172,7 +180,7 @@
         <a href="{{ url_for('dashboard.account') }}" class="nav-link {{ 'active' if request.endpoint and 'account' in request.endpoint else '' }}"><i class="fas fa-wallet"></i></a>
         <a href="{{ url_for('dashboard.transactions') }}" class="nav-link {{ 'active' if request.endpoint and 'transactions' in request.endpoint else '' }}"><i class="fas fa-exchange-alt"></i></a>
         <a href="{{ url_for('dashboard.categories') }}" class="nav-link {{ 'active' if request.endpoint and 'categories' in request.endpoint else '' }}"><i class="fas fa-tags"></i></a>
-        <a href="#" class="nav-link" onclick="document.getElementById('logoutForm').submit(); return false;"><i class="fas fa-sign-out-alt"></i></a>
+        <a href="{{ url_for('dashboard.help') }}" class="nav-link {{ 'active' if request.endpoint and 'help' in request.endpoint else '' }}"><i class="fas fa-question-circle"></i></a>
     </nav>
     {% endif %}
 
