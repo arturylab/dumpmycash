@@ -7,4 +7,7 @@ app = create_app()
 migrate = Migrate(app, db)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    import sys
+    if 'db' not in sys.argv:
+        app.run(debug=True)
+
