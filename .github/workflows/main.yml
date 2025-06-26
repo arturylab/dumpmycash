@@ -19,6 +19,9 @@ jobs:
         source venv/bin/activate
         pip install -r requirements.txt
         python manage.py db upgrade
-        sudo systemctl restart dumpmycash
+        sudo systemctl daemon-reexec
+        sudo systemctl daemon-reload
+        sudo systemctl enable dumpmycash
+        sudo systemctl start dumpmycash
         sleep 3
         systemctl is-active dumpmycash && echo "✅ Deployment successful" || echo "❌ Deployment failed"
