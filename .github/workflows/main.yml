@@ -1,0 +1,19 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Deploy application
+      run: |
+        cd /home/ubuntu/dumpmycash
+        git pull origin main
+        source venv/bin/activate
+        sudo systemctl restart dumpmycash
+        sleep 3
+        systemctl is-active dumpmycash && echo "Deployment successful"
