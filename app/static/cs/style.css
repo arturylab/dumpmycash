@@ -11,13 +11,13 @@ html, body {
 }
 
 #login-container {
-    min-height: 75vh; /* Full viewport height for login page */
+    min-height: 65vh; /* Full viewport height for login page */
 }
 
 #logo-container {
     color: white;
     background-color: black;
-    min-height: 25vh; /* Full viewport height for login page */
+    min-height: 35vh; /* Full viewport height for login page */
 }
 
 /* Ensure footer stays at bottom */
