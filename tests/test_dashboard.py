@@ -61,42 +61,42 @@ class TestDashboardAuthenticated:
         response = client.get('/home', follow_redirects=True)
         assert response.status_code == 200
         assert b"Home" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
     
     def test_account_authenticated_access(self, client):
         """Test that authenticated user can access account page."""
         response = client.get('/account', follow_redirects=True)
         assert response.status_code == 200
         assert b"Account" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
     
     def test_transactions_authenticated_access(self, client):
         """Test that authenticated user can access transactions page."""
         response = client.get('/transactions', follow_redirects=True)
         assert response.status_code == 200
         assert b"Transactions" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
     
     def test_categories_authenticated_access(self, client):
         """Test that authenticated user can access categories page."""
         response = client.get('/categories', follow_redirects=True)
         assert response.status_code == 200
         assert b"Categories" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
     
     def test_profile_authenticated_access(self, client):
         """Test that authenticated user can access profile page."""
         response = client.get('/profile/')  # Note the trailing slash for blueprint
         assert response.status_code == 200
         assert b"Profile" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
     
     def test_help_authenticated_access(self, client):
         """Test that authenticated user can access help page."""
         response = client.get('/help')
         assert response.status_code == 200
         assert b"Help" in response.data
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
 
 
 class TestDashboardNavigation:
@@ -151,7 +151,7 @@ class TestDashboardNavigation:
         response = client.get('/home', follow_redirects=True)
         assert response.status_code == 200
         # Check for base template elements
-        assert b"DumpMyMoney" in response.data
+        assert b"DumpMyCash" in response.data
         assert b"navbar" in response.data or b"nav" in response.data
         assert b"footer" in response.data
     

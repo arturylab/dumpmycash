@@ -569,11 +569,11 @@ class TestCategoriesTimeFiltering:
         response = logged_in_client.get('/categories/?filter=week')
         assert response.status_code == 200
         
-        # Check that week totals include only today's transactions
-        # (3 days ago falls outside the current week starting Monday)
-        # Week total: $500 income, $100 expense (only today's transactions)
+        # Check that week totals include this week's transactions
+        # (3 days ago is Monday of current week, so it should be included)
+        # Week total: $500 (today) + $300 (3 days ago) = $800 income, $100 expense
         response_text = response.data.decode('utf-8')
-        assert '$500.00' in response_text  # Week's total income (only today)
+        assert '$800.00' in response_text  # Week's total income (today + 3 days ago)
         assert '$100.00' in response_text  # Week's total expense
     
     def test_category_totals_with_month_filter(self, logged_in_client, sample_transactions):
@@ -617,7 +617,7 @@ class TestCategoriesTimeFiltering:
         data = json.loads(response.data)
         assert data['success'] is True
         assert data['stats']['filter'] == 'week'
-        assert data['stats']['total_income'] == 500.0  # Only today's income (week transaction is outside current week)
+        assert data['stats']['total_income'] == 800.0  # Today (500) + 3 days ago (300) = 800
         assert data['stats']['total_expenses'] == 100.0
         
         # Test month filter

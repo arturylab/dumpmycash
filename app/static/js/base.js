@@ -1,5 +1,5 @@
 /**
- * Base JavaScript functionality for DumpMyMoney application
+ * Base JavaScript functionality for DumpMyCash application
  * This file contains common JavaScript functions used across the application
  */
 

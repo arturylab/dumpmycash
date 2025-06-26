@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Register - DumpMyMoney{% endblock %}
+{% block title %}Register - DumpMyCash{% endblock %}
 
 {% block navigation %}
 <!-- Override navigation for auth pages -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <div class="container-fluid">
     <a class="navbar-brand" href="{{ url_for('auth.login') }}">
-      <img src="{{ url_for('static', filename='images/dollar32.png') }}" alt="DumpMyMoney" width="24" height="24" class="d-inline-block align-text-top">
-      DumpMyMoney
+      <img src="{{ url_for('static', filename='images/dollar32.png') }}" alt="DumpMyCash" width="24" height="24" class="d-inline-block align-text-top">
+      DumpMyCash
     </a>
   </div>
 </nav>
@@ -20,9 +20,9 @@
     <div class="card shadow">
       <div class="card-body p-4">
         <div class="text-center mb-4">
-          <img src="{{ url_for('static', filename='images/dollar128.png') }}" alt="DumpMyMoney" width="64" height="64">
+          <img src="{{ url_for('static', filename='images/dollar128.png') }}" alt="DumpMyCash" width="64" height="64">
           <h2 class="mt-3">Create Account</h2>
-          <p class="text-muted">Join DumpMyMoney today</p>
+          <p class="text-muted">Join DumpMyCash today</p>
         </div>
 
         <form id="registerForm" action="{{ url_for('auth.register') }}" method="POST">

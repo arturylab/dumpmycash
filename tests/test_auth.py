@@ -72,7 +72,7 @@ def test_login_success(client, app, auth_client):
     
     assert response.status_code == 200
     assert b"Login successful!" in response.data
-    assert b"DumpMyMoney" in response.data
+    assert b"DumpMyCash" in response.data
 
     with client:
         client.get('/')
