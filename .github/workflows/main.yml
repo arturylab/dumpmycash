@@ -7,21 +7,18 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Pull latest code and deploy
+    - name: Deploy application
       run: |
         cd /home/ubuntu/dumpmycash
         git pull origin main
         source venv/bin/activate
         pip install -r requirements.txt
         python manage.py db upgrade
-        sudo systemctl daemon-reexec
-        sudo systemctl daemon-reload
-        sudo systemctl enable dumpmycash
-        sudo systemctl start dumpmycash
+        sudo /bin/systemctl restart dumpmycash
         sleep 3
-        systemctl is-active dumpmycash && echo "✅ Deployment successful" || echo "❌ Deployment failed"
+        sudo /bin/systemctl is-active dumpmycash && echo "✅ Deployment successful" || echo "❌ Deployment failed"
