@@ -9,9 +9,10 @@ jobs:
     runs-on: self-hosted
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Deploy application
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Pull latest code and deploy
       run: |
         cd /home/ubuntu/dumpmycash
         git pull origin main
@@ -20,4 +21,4 @@ jobs:
         python manage.py db upgrade
         sudo systemctl restart dumpmycash
         sleep 3
-        systemctl is-active dumpmycash && echo "Deployment successful"
+        systemctl is-active dumpmycash && echo "✅ Deployment successful" || echo "❌ Deployment failed"
