@@ -27,17 +27,29 @@ DEFAULT_EMOJI_INCOME = '💰'
 DEFAULT_EMOJI_EXPENSE = '💸'
 
 
-def get_date_range(filter_type):
+def get_date_range(filter_type, start_date_str=None, end_date_str=None):
     """
     Get date range based on filter type.
     
     Args:
-        filter_type (str): Type of filter ('today', 'week', 'month', 'quarter', 'year', 'all')
+        filter_type (str): Type of filter ('today', 'week', 'month', 'quarter', 'year', 'custom', 'all')
+        start_date_str (str, optional): Start date for custom range in YYYY-MM-DD format
+        end_date_str (str, optional): End date for custom range in YYYY-MM-DD format
         
     Returns:
         tuple: (start_date, end_date) or (None, None) for 'all' filter
     """
     now = datetime.now()
+    
+    # Handle custom date range
+    if filter_type == 'custom' and start_date_str and end_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59, microsecond=999999)
+            return start_date, end_date
+        except ValueError:
+            # Invalid date format, fall back to default month filter
+            filter_type = 'month'
     
     if filter_type == 'today':
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -63,10 +75,12 @@ def get_date_range(filter_type):
         
         # Last day of the quarter
         end_month = start_month + 2
-        if end_month == 12:
-            end_date = now.replace(year=now.year + 1, month=1, day=1) - timedelta(microseconds=1)
+        if end_month > 12:
+            # Next year's January 1st minus 1 microsecond = December 31st 23:59:59.999999
+            end_date = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(microseconds=1)
         else:
-            end_date = now.replace(month=end_month + 1, day=1) - timedelta(microseconds=1)
+            # First day of next month minus 1 microsecond = Last day of quarter at 23:59:59.999999
+            end_date = now.replace(month=end_month + 1, day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(microseconds=1)
     elif filter_type == 'year':
         # First day of current year
         start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -157,6 +171,7 @@ def _get_filter_display_names():
         'month': 'This Month',
         'quarter': 'This Quarter',
         'year': 'This Year',
+        'custom': 'Custom Range',
         'all': 'All Time'
     }
 
@@ -170,9 +185,13 @@ def list_categories():
     Supports filtering by time period and shows statistics for each category.
     Excludes transfer transactions from calculations.
     """
-    # Get time filter from query string, default to 'all'
+    # Get filter parameters
     time_filter = request.args.get('filter', DEFAULT_TIME_FILTER)
-    start_date, end_date = get_date_range(time_filter)
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    # Get date range based on filter type
+    start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
     
     # Get categories with totals using helper functions
     income_categories_result = _build_category_query_with_totals('income', start_date, end_date).all()
@@ -194,6 +213,12 @@ def list_categories():
     # Default to 'month' for invalid filters
     display_filter = time_filter if time_filter in filter_names else DEFAULT_TIME_FILTER
     
+    # For custom range, show the date range in display name
+    if display_filter == 'custom' and start_date_str and end_date_str:
+        filter_display_name = f"Custom Range ({start_date_str} to {end_date_str})"
+    else:
+        filter_display_name = filter_names.get(display_filter, 'This Month')
+    
     return render_template('dashboard/categories.html',
                          income_categories=income_categories,
                          expense_categories=expense_categories,
@@ -202,7 +227,7 @@ def list_categories():
                          total_income=total_income,
                          total_expenses=total_expenses,
                          current_filter=display_filter,
-                         filter_display_name=filter_names.get(display_filter, 'This Month'))
+                         filter_display_name=filter_display_name)
 
 
 # API Endpoints for CRUD operations
@@ -470,9 +495,13 @@ def api_delete_category(category_id):
 def api_category_stats():
     """API endpoint to get category statistics with time filtering."""
     try:
-        # Get time filter from query string
+        # Get filter parameters
         time_filter = request.args.get('filter', 'month')
-        start_date, end_date = get_date_range(time_filter)
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        # Get date range based on filter type and custom dates
+        start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
         
         # Count categories by type
         income_categories = Category.query.filter_by(
@@ -536,22 +565,35 @@ def api_category_stats():
 @category_bp.route('/api/categories/top-expenses', methods=['GET'])
 @api_login_required
 def api_top_expense_categories():
-    """API endpoint to get top expense categories for current month."""
+    """API endpoint to get top expense categories with time filtering."""
     try:
-        # Get current month date range
-        start_date, end_date = get_date_range('month')
+        # Get filter parameters
+        time_filter = request.args.get('filter', 'month')
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
         
-        # Query top expense categories with transaction totals
-        top_expenses = db.session.query(
+        # Get date range based on filter type
+        start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
+        
+        # Base query for top expense categories
+        query = db.session.query(
             Category.name,
             Category.unicode_emoji,
             func.sum(Transaction.amount).label('total')
         ).join(Transaction).filter(
             Category.user_id == g.user.id,
-            Category.type == 'expense',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Category.id).order_by(
+            Category.type == 'expense'
+        )
+        
+        # Apply date filter if provided
+        if start_date and end_date:
+            query = query.filter(
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            )
+        
+        # Get top expenses
+        top_expenses = query.group_by(Category.id).order_by(
             func.sum(Transaction.amount).desc()
         ).limit(TOP_CATEGORIES_LIMIT).all()
         
@@ -565,7 +607,8 @@ def api_top_expense_categories():
         return jsonify({
             'success': True,
             'chart_data': chart_data,
-            'has_data': len(top_expenses) > 0
+            'has_data': len(top_expenses) > 0,
+            'filter': time_filter
         })
         
     except Exception as e:

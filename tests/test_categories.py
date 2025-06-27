@@ -728,3 +728,156 @@ class TestCategoriesDateRangeHelper:
             assert start is not None
             assert end is not None
             assert start.day == 1  # Should behave like month
+
+class TestCategoriesNewFilters:
+    """Test cases for new filtering options (quarter and custom range)."""
+    
+    def test_quarter_filter_with_categories_page(self, logged_in_client, sample_transactions):
+        """Test quarter filter on categories page."""
+        response = logged_in_client.get('/categories/?filter=quarter')
+        assert response.status_code == 200
+        
+        # Check that quarter filter is active
+        html_content = response.get_data(as_text=True)
+        assert 'This Quarter' in html_content
+        
+    def test_custom_range_filter_with_categories_page(self, logged_in_client, sample_transactions):
+        """Test custom range filter on categories page."""
+        # Test with a specific date range
+        start_date = '2024-01-01'
+        end_date = '2024-01-31'
+        
+        response = logged_in_client.get(f'/categories/?filter=custom&start_date={start_date}&end_date={end_date}')
+        assert response.status_code == 200
+        
+        # Check that custom filter is displayed
+        html_content = response.get_data(as_text=True)
+        assert 'Custom Range' in html_content
+        assert start_date in html_content
+        assert end_date in html_content
+        
+    def test_get_date_range_quarter_functionality(self, app):
+        """Test quarter date range calculation in detail."""
+        from app.categories import get_date_range
+        
+        with app.app_context():
+            # Test that quarter function returns valid dates
+            start, end = get_date_range('quarter')
+            assert start is not None
+            assert end is not None
+            assert start.day == 1
+            assert start.hour == 0
+            assert start.minute == 0
+            assert start.second == 0
+            assert end.hour == 23
+            assert end.minute == 59
+            assert end.second == 59
+            
+            # Verify quarter calculation logic
+            from datetime import datetime
+            now = datetime.now()
+            quarter = (now.month - 1) // 3 + 1
+            start_month = (quarter - 1) * 3 + 1
+            
+            assert start.month == start_month
+            assert start.year == now.year
+                
+    def test_get_date_range_custom_functionality(self, app):
+        """Test custom date range functionality."""
+        from app.categories import get_date_range
+        
+        with app.app_context():
+            # Test valid custom range
+            start, end = get_date_range('custom', '2024-01-01', '2024-01-31')
+            assert start is not None
+            assert end is not None
+            assert start.year == 2024
+            assert start.month == 1
+            assert start.day == 1
+            assert start.hour == 0
+            assert end.year == 2024
+            assert end.month == 1
+            assert end.day == 31
+            assert end.hour == 23
+            
+            # Test invalid date format (should fall back to month)
+            start, end = get_date_range('custom', 'invalid-date', '2024-01-31')
+            assert start is not None
+            assert end is not None
+            assert start.day == 1  # Should fall back to month behavior
+            
+            # Test missing dates (should fall back to month)
+            start, end = get_date_range('custom', None, None)
+            assert start is not None
+            assert end is not None
+            assert start.day == 1  # Should fall back to month behavior
+            
+    def test_quarter_filter_display_name(self, app):
+        """Test that quarter filter shows correct display name."""
+        from app.categories import _get_filter_display_names
+        
+        with app.app_context():
+            filter_names = _get_filter_display_names()
+            assert 'quarter' in filter_names
+            assert filter_names['quarter'] == 'This Quarter'
+            
+    def test_custom_filter_display_name(self, app):
+        """Test that custom filter shows correct display name.""" 
+        from app.categories import _get_filter_display_names
+        
+        with app.app_context():
+            filter_names = _get_filter_display_names()
+            assert 'custom' in filter_names
+            assert filter_names['custom'] == 'Custom Range'
+
+    def test_category_stats_api_with_quarter_filter(self, logged_in_client, sample_transactions):
+        """Test category stats API with quarter filter."""
+        response = logged_in_client.get('/categories/api/categories/stats?filter=quarter')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'success' in data
+        assert data['success'] is True
+        assert 'stats' in data
+        assert data['stats']['filter'] == 'quarter'
+        
+    def test_category_stats_api_with_custom_filter(self, logged_in_client, sample_transactions):
+        """Test category stats API with custom date range."""
+        start_date = '2024-01-01'
+        end_date = '2024-01-31'
+        
+        response = logged_in_client.get(f'/categories/api/categories/stats?filter=custom&start_date={start_date}&end_date={end_date}')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'success' in data
+        assert data['success'] is True
+        assert 'stats' in data
+        assert data['stats']['filter'] == 'custom'
+
+    def test_top_expenses_chart_with_quarter_filter(self, logged_in_client, sample_transactions):
+        """Test top expenses chart API with quarter filter."""
+        response = logged_in_client.get('/categories/api/categories/top-expenses?filter=quarter')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'success' in data
+        assert data['success'] is True
+        assert 'chart_data' in data
+        assert 'filter' in data
+        assert data['filter'] == 'quarter'
+        
+    def test_top_expenses_chart_with_custom_filter(self, logged_in_client, sample_transactions):
+        """Test top expenses chart API with custom date range."""
+        start_date = '2024-01-01'
+        end_date = '2024-01-31'
+        
+        response = logged_in_client.get(f'/categories/api/categories/top-expenses?filter=custom&start_date={start_date}&end_date={end_date}')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'success' in data
+        assert data['success'] is True
+        assert 'chart_data' in data
+        assert 'filter' in data
+        assert data['filter'] == 'custom'

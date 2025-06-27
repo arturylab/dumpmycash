@@ -291,39 +291,31 @@ function showTransferModal() {
     fetch('/account/api/accounts')
         .then(response => response.json())
         .then(accounts => {
-            const fromMenu = document.getElementById('fromAccountMenu');
-            const toMenu = document.getElementById('toAccountMenu');
+            const fromSelect = document.getElementById('fromAccount');
+            const toSelect = document.getElementById('toAccount');
             
-            // Clear existing options
-            fromMenu.innerHTML = '';
-            toMenu.innerHTML = '';
+            // Clear existing options (keep the default option)
+            fromSelect.innerHTML = '<option value="">Select source account</option>';
+            toSelect.innerHTML = '<option value="">Select destination account</option>';
             
-            // Add account options to both dropdown menus
+            // Add account options to both select elements
             accounts.forEach(account => {
-                // Create dropdown items for From Account
-                const fromItem = document.createElement('li');
-                fromItem.innerHTML = `
-                    <a class="dropdown-item" href="#" data-account-id="${account.id}" data-account-name="${account.name}" data-account-balance="${account.balance}">
-                        ${account.name} 
-                        <small class="text-muted">(${formatCurrency(account.balance)})</small>
-                    </a>
-                `;
+                // Create option for From Account
+                const fromOption = document.createElement('option');
+                fromOption.value = account.id;
+                fromOption.textContent = `${account.name} (${formatCurrency(account.balance)})`;
                 
-                // Create dropdown items for To Account
-                const toItem = document.createElement('li');
-                toItem.innerHTML = `
-                    <a class="dropdown-item" href="#" data-account-id="${account.id}" data-account-name="${account.name}" data-account-balance="${account.balance}">
-                        ${account.name} 
-                        <small class="text-muted" >(${formatCurrency(account.balance)})</small>
-                    </a>
-                `;
+                // Create option for To Account
+                const toOption = document.createElement('option');
+                toOption.value = account.id;
+                toOption.textContent = `${account.name} (${formatCurrency(account.balance)})`;
                 
-                fromMenu.appendChild(fromItem);
-                toMenu.appendChild(toItem);
+                fromSelect.appendChild(fromOption);
+                toSelect.appendChild(toOption);
             });
             
-            // Add event listeners for Bootstrap dropdown selections
-            setupBootstrapTransferListeners();
+            // Setup event listeners for select elements
+            setupSimpleTransferListeners();
             
             // Show modal
             var transferModal = new bootstrap.Modal(document.getElementById('transferModal'));
@@ -875,98 +867,37 @@ function checkAndOpenModal() {
 }
 
 /**
- * Setup event listeners for Bootstrap transfer dropdowns
- */
-function setupBootstrapTransferListeners() {
-    // From Account dropdown listeners
-    document.querySelectorAll('#fromAccountMenu .dropdown-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            const accountId = this.getAttribute('data-account-id');
-            const accountName = this.getAttribute('data-account-name');
-            const accountBalance = this.getAttribute('data-account-balance');
-            
-            // Update hidden input
-            document.getElementById('fromAccount').value = accountId;
-            
-            // Update button text
-            document.getElementById('fromAccountText').textContent = `${accountName} (${formatCurrency(parseFloat(accountBalance))})`;
-            
-            // Update To Account dropdown to exclude selected account
-            updateToAccountDropdown(accountId);
-        });
-    });
-    
-    // To Account dropdown listeners
-    document.querySelectorAll('#toAccountMenu .dropdown-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            const accountId = this.getAttribute('data-account-id');
-            const accountName = this.getAttribute('data-account-name');
-            const accountBalance = this.getAttribute('data-account-balance');
-            
-            // Update hidden input
-            document.getElementById('toAccount').value = accountId;
-            
-            // Update button text
-            document.getElementById('toAccountText').textContent = `${accountName} (${formatCurrency(parseFloat(accountBalance))})`;
-            
-            // Update From Account dropdown to exclude selected account
-            updateFromAccountDropdown(accountId);
-        });
-    });
-}
-
-/**
- * Update To Account dropdown to exclude selected From Account
- */
-function updateToAccountDropdown(excludeId) {
-    document.querySelectorAll('#toAccountMenu .dropdown-item').forEach(item => {
-        const accountId = item.getAttribute('data-account-id');
-        const listItem = item.parentElement;
-        
-        if (accountId === excludeId) {
-            listItem.style.display = 'none';
-        } else {
-            listItem.style.display = 'block';
-        }
-    });
-}
-
-/**
- * Update From Account dropdown to exclude selected To Account
- */
-function updateFromAccountDropdown(excludeId) {
-    document.querySelectorAll('#fromAccountMenu .dropdown-item').forEach(item => {
-        const accountId = item.getAttribute('data-account-id');
-        const listItem = item.parentElement;
-        
-        if (accountId === excludeId) {
-            listItem.style.display = 'none';
-        } else {
-            listItem.style.display = 'block';
-        }
-    });
-}
-
-/**
  * Setup event listeners for simple transfer select dropdowns
  */
 function setupSimpleTransferListeners() {
     const fromSelect = document.getElementById('fromAccount');
     const toSelect = document.getElementById('toAccount');
     
+    // Remove existing event listeners to avoid duplicates
+    fromSelect.removeEventListener('change', handleFromAccountChange);
+    toSelect.removeEventListener('change', handleToAccountChange);
+    
     // Update "To Account" options when "From Account" changes
-    fromSelect.addEventListener('change', function() {
-        updateSelectOptions(toSelect, this.value);
-    });
+    fromSelect.addEventListener('change', handleFromAccountChange);
     
     // Update "From Account" options when "To Account" changes
-    toSelect.addEventListener('change', function() {
-        updateSelectOptions(fromSelect, this.value);
-    });
+    toSelect.addEventListener('change', handleToAccountChange);
+}
+
+/**
+ * Handle From Account selection change
+ */
+function handleFromAccountChange() {
+    const toSelect = document.getElementById('toAccount');
+    updateSelectOptions(toSelect, this.value);
+}
+
+/**
+ * Handle To Account selection change
+ */
+function handleToAccountChange() {
+    const fromSelect = document.getElementById('fromAccount');
+    updateSelectOptions(fromSelect, this.value);
 }
 
 /**

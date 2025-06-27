@@ -396,30 +396,18 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">From Account</label>
-            <div class="dropdown">
-              <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="fromAccountDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-wallet me-2"></i>
-                <span id="fromAccountText">Select source account</span>
-              </button>
-              <ul class="dropdown-menu w-100" aria-labelledby="fromAccountDropdown" id="fromAccountMenu">
-                <!-- Accounts will be populated by JavaScript -->
-              </ul>
-            </div>
-            <input type="hidden" id="fromAccount" name="from_account" required>
+            <label for="fromAccount" class="form-label">From Account</label>
+            <select class="form-select" id="fromAccount" name="from_account" required>
+              <option value="">Select source account</option>
+              <!-- Accounts will be populated by JavaScript -->
+            </select>
           </div>
           <div class="mb-3">
-            <label class="form-label">To Account</label>
-            <div class="dropdown">
-              <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="toAccountDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-wallet me-2"></i>
-                <span id="toAccountText">Select destination account</span>
-              </button>
-              <ul class="dropdown-menu w-100" aria-labelledby="toAccountDropdown" id="toAccountMenu">
-                <!-- Accounts will be populated by JavaScript -->
-              </ul>
-            </div>
-            <input type="hidden" id="toAccount" name="to_account" required>
+            <label for="toAccount" class="form-label">To Account</label>
+            <select class="form-select" id="toAccount" name="to_account" required>
+              <option value="">Select destination account</option>
+              <!-- Accounts will be populated by JavaScript -->
+            </select>
           </div>
           <div class="mb-3">
             <label for="transferAmount" class="form-label">Amount</label>

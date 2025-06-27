@@ -22,8 +22,10 @@
                 <li><a class="dropdown-item{% if current_filter == 'today' %} active{% endif %}" href="#" data-filter="today">Today</a></li>
                 <li><a class="dropdown-item{% if current_filter == 'week' %} active{% endif %}" href="#" data-filter="week">This Week</a></li>
                 <li><a class="dropdown-item{% if current_filter == 'month' %} active{% endif %}" href="#" data-filter="month">This Month</a></li>
+                <li><a class="dropdown-item{% if current_filter == 'quarter' %} active{% endif %}" href="#" data-filter="quarter">This Quarter</a></li>
                 <li><a class="dropdown-item{% if current_filter == 'year' %} active{% endif %}" href="#" data-filter="year">This Year</a></li>
                 <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item{% if current_filter == 'custom' %} active{% endif %}" href="#" data-filter="custom">Custom Range</a></li>
                 <li><a class="dropdown-item{% if current_filter == 'all' %} active{% endif %}" href="#" data-filter="all">All Time</a></li>
               </ul>
             </div>
@@ -326,6 +328,41 @@
           <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
           Delete Category
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Date Range Modal -->
+<div class="modal fade" id="customDateRangeModal" tabindex="-1" aria-labelledby="customDateRangeModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="customDateRangeModalLabel">Select Custom Date Range</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="customDateRangeForm">
+          <div class="row">
+            <div class="col-md-6">
+              <label for="customStartDate" class="form-label">Start Date</label>
+              <input type="date" class="form-control" id="customStartDate" name="start_date" required>
+            </div>
+            <div class="col-md-6">
+              <label for="customEndDate" class="form-label">End Date</label>
+              <input type="date" class="form-control" id="customEndDate" name="end_date" required>
+            </div>
+          </div>
+          <div class="mt-3">
+            <small class="text-muted">
+              Select the date range for filtering categories and their statistics.
+            </small>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="applyCustomDateRange">Apply Filter</button>
       </div>
     </div>
   </div>

@@ -245,6 +245,11 @@ class CategoryManager {
                 e.preventDefault();
                 const filter = e.target.getAttribute('data-filter');
                 
+                if (filter === 'custom') {
+                    this.showCustomDateRangeModal();
+                    return;
+                }
+                
                 // Update active state
                 document.querySelectorAll('#timeFilterDropdown .dropdown-item').forEach(item => {
                     item.classList.remove('active');
@@ -256,7 +261,9 @@ class CategoryManager {
                     'today': 'Today',
                     'week': 'This Week',
                     'month': 'This Month',
+                    'quarter': 'This Quarter',
                     'year': 'This Year',
+                    'custom': 'Custom Range',
                     'all': 'All Time'
                 };
                 
@@ -265,12 +272,28 @@ class CategoryManager {
                     currentFilterElement.textContent = filterNames[filter];
                 }
                 
+                // Update chart immediately before page reload
+                this.loadTopExpensesChart(filter);
+                
                 // Reload page with new filter
                 const url = new URL(window.location);
                 url.searchParams.set('filter', filter);
+                // Remove custom date params when switching to non-custom filter
+                if (filter !== 'custom') {
+                    url.searchParams.delete('start_date');
+                    url.searchParams.delete('end_date');
+                }
                 window.location.href = url.toString();
             }
         });
+        
+        // Setup custom date range modal
+        const applyCustomBtn = document.querySelector('#applyCustomDateRange');
+        if (applyCustomBtn) {
+            applyCustomBtn.addEventListener('click', () => {
+                this.applyCustomDateRange();
+            });
+        }
     }
 
     /**
@@ -510,9 +533,26 @@ class CategoryManager {
      * Initialize Top Expenses Chart
      */
     initializeTopExpensesChart() {
+        // Get current filter from URL or default to month
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentFilter = urlParams.get('filter') || 'month';
+        const startDate = urlParams.get('start_date');
+        const endDate = urlParams.get('end_date');
+        
+        this.loadTopExpensesChart(currentFilter, startDate, endDate);
+    }
+
+    /**
+     * Load top expenses chart with specified filter
+     * @param {string} filter - Time filter to apply
+     * @param {string} startDate - Start date for custom range
+     * @param {string} endDate - End date for custom range
+     */
+    loadTopExpensesChart(filter = 'month', startDate = null, endDate = null) {
         const canvas = document.getElementById('top-expenses-chart');
         const loadingDiv = document.getElementById('chart-loading');
         const emptyDiv = document.getElementById('chart-empty');
+        const chartSubtitle = document.getElementById('chart-subtitle');
         
         if (!canvas) return;
         
@@ -521,8 +561,28 @@ class CategoryManager {
         if (emptyDiv) emptyDiv.classList.add('d-none');
         canvas.style.display = 'none';
         
+        // Build API URL with filter parameters
+        let apiUrl = '/categories/api/categories/top-expenses?filter=' + filter;
+        if (filter === 'custom' && startDate && endDate) {
+            apiUrl += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+        
+        // Update chart subtitle based on filter
+        if (chartSubtitle) {
+            const filterNames = {
+                'today': 'Today',
+                'week': 'This Week',
+                'month': 'Current Month',
+                'quarter': 'This Quarter',
+                'year': 'This Year',
+                'custom': startDate && endDate ? `${startDate} to ${endDate}` : 'Custom Range',
+                'all': 'All Time'
+            };
+            chartSubtitle.textContent = filterNames[filter] || 'Current Month';
+        }
+        
         // Fetch top expense categories data
-        fetch('/categories/api/categories/top-expenses')
+        fetch(apiUrl)
             .then(response => response.json())
             .then(data => {
                 if (loadingDiv) loadingDiv.style.display = 'none';
@@ -542,7 +602,7 @@ class CategoryManager {
     }
 
     /**
-     * Render the top expenses chart
+     * Render the top expenses chart as bubble chart without axes
      */
     renderTopExpensesChart(canvas, chartData) {
         const ctx = canvas.getContext('2d');
@@ -552,29 +612,101 @@ class CategoryManager {
             this.topExpensesChart.destroy();
         }
         
+        // Convert data to bubble format with improved positioning
+        const bubbleData = chartData.data.map((value, index) => {
+            // Create a more natural scattered pattern using spiral positioning
+            const angle = index * 0.618 * 2 * Math.PI; // Golden angle for natural distribution
+            const spiralRadius = 15 + Math.sqrt(index + 1) * 8; // Spiral outward
+            const x = 50 + spiralRadius * Math.cos(angle);
+            const y = 50 + spiralRadius * Math.sin(angle);
+            
+            // Bubble size based on amount with better scaling
+            const maxValue = Math.max(...chartData.data);
+            const minValue = Math.min(...chartData.data);
+            const valueRange = maxValue - minValue || 1; // Prevent division by zero
+            const normalizedValue = (value - minValue) / valueRange;
+            const bubbleSize = 8 + (normalizedValue * 25); // Better size range: 8-33
+            
+            return {
+                x: Math.max(10, Math.min(90, x)), // Keep bubbles within bounds
+                y: Math.max(10, Math.min(90, y)), // Keep bubbles within bounds
+                r: bubbleSize,
+                label: chartData.labels[index],
+                value: value,
+                emoji: chartData.emojis[index] || '💸'
+            };
+        });
+        
+        // Enhanced color palette for better visual appeal
+        const colorPalette = [
+            'rgba(255, 107, 107, 0.8)',  // Red
+            'rgba(78, 205, 196, 0.8)',   // Teal
+            'rgba(255, 159, 64, 0.8)',   // Orange
+            'rgba(54, 162, 235, 0.8)',   // Blue
+            'rgba(255, 206, 86, 0.8)',   // Yellow
+            'rgba(153, 102, 255, 0.8)',  // Purple
+            'rgba(75, 192, 192, 0.8)',   // Green
+            'rgba(255, 99, 132, 0.8)',   // Pink
+            'rgba(69, 183, 209, 0.8)',   // Sky Blue
+            'rgba(150, 206, 180, 0.8)'   // Mint
+        ];
+        
+        const borderColors = [
+            'rgba(255, 107, 107, 1)',
+            'rgba(78, 205, 196, 1)',
+            'rgba(255, 159, 64, 1)',
+            'rgba(54, 162, 235, 1)',
+            'rgba(255, 206, 86, 1)',
+            'rgba(153, 102, 255, 1)',
+            'rgba(75, 192, 192, 1)',
+            'rgba(255, 99, 132, 1)',
+            'rgba(69, 183, 209, 1)',
+            'rgba(150, 206, 180, 1)'
+        ];
+        
         this.topExpensesChart = new Chart(ctx, {
-            type: 'doughnut',
+            type: 'bubble',
             data: {
-                labels: chartData.labels,
                 datasets: [{
-                    data: chartData.data,
-                    backgroundColor: [
-                        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-                        '#9966FF', '#FF9F40', '#FF6B6B', '#4ECDC4',
-                        '#45B7D1', '#96CEB4'
-                    ],
+                    label: 'Expenses',
+                    data: bubbleData,
+                    backgroundColor: colorPalette.slice(0, chartData.data.length),
+                    borderColor: borderColors.slice(0, chartData.data.length),
                     borderWidth: 2,
-                    borderColor: '#fff'
+                    hoverBorderWidth: 3
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        display: false,
+                        min: 0,
+                        max: 100
+                    },
+                    y: {
+                        display: false,
+                        min: 0,
+                        max: 100
+                    }
+                },
                 plugins: {
                     legend: {
+                        display: true,
                         position: 'bottom',
                         labels: {
-                            padding: 15,
+                            generateLabels: function(chart) {
+                                const data = chart.data.datasets[0].data;
+                                return data.map((point, index) => ({
+                                    text: `${point.emoji} ${point.label}`,
+                                    fillStyle: chart.data.datasets[0].backgroundColor[index],
+                                    strokeStyle: chart.data.datasets[0].borderColor[index],
+                                    lineWidth: 2,
+                                    pointStyle: 'circle'
+                                }));
+                            },
+                            padding: 12,
                             usePointStyle: true,
                             font: {
                                 size: 11
@@ -583,18 +715,80 @@ class CategoryManager {
                     },
                     tooltip: {
                         callbacks: {
+                            title: function(context) {
+                                const point = context[0].raw;
+                                return `${point.emoji} ${point.label}`;
+                            },
                             label: function(context) {
-                                const emoji = chartData.emojis[context.dataIndex] || '💸';
-                                const value = context.parsed;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = ((value / total) * 100).toFixed(1);
-                                return `${emoji} ${context.label}: $${value.toFixed(2)} (${percentage}%)`;
+                                const point = context.raw;
+                                const total = chartData.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((point.value / total) * 100).toFixed(1);
+                                return `Amount: $${point.value.toFixed(2)} (${percentage}%)`;
                             }
                         }
                     }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'point'
                 }
             }
         });
+    }
+
+    /**
+     * Show custom date range modal
+     */
+    showCustomDateRangeModal() {
+        const modal = document.getElementById('customDateRangeModal');
+        if (modal) {
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+        }
+    }
+
+    /**
+     * Apply custom date range filter
+     */
+    applyCustomDateRange() {
+        const startDate = document.getElementById('customStartDate').value;
+        const endDate = document.getElementById('customEndDate').value;
+        
+        if (!startDate || !endDate) {
+            this.showAlert('Please select both start and end dates.', 'warning');
+            return;
+        }
+        
+        if (new Date(startDate) > new Date(endDate)) {
+            this.showAlert('Start date cannot be after end date.', 'warning');
+            return;
+        }
+        
+        // Update the filter button text
+        const currentFilterElement = document.getElementById('currentFilter');
+        if (currentFilterElement) {
+            currentFilterElement.textContent = `Custom Range (${startDate} to ${endDate})`;
+        }
+        
+        // Update chart immediately before page reload
+        this.loadTopExpensesChart('custom', startDate, endDate);
+        
+        // Apply the filter
+        const url = new URL(window.location);
+        url.searchParams.set('filter', 'custom');
+        url.searchParams.set('start_date', startDate);
+        url.searchParams.set('end_date', endDate);
+        
+        // Close modal and redirect
+        const modal = document.getElementById('customDateRangeModal');
+        if (modal) {
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+        }
+        
+        window.location.href = url.toString();
     }
 
     /**
