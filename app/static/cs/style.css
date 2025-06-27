@@ -54,8 +54,8 @@ html, body {
 }
 
 #sidebar {
-    min-width: 80px;
-    max-width: 80px;
+    min-width: 200px;
+    max-width: 200px;
     position: fixed;
     height: 100%;
     background: #343a40;
@@ -64,21 +64,32 @@ html, body {
 }
 
 #sidebar.active {
-    min-width: 80px;
-    max-width: 80px;
-    text-align: center;
+    min-width: 200px;
+    max-width: 200px;
+    text-align: left;
 }
 
 #sidebar .sidebar-header {
     padding: 20px;
     background: #212529;
     text-align: center;
+    margin-bottom: 0;
+    position: relative;
+}
+
+#sidebar .sidebar-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 15px;
+    right: 15px;
+    height: 1px;
+    background-color: #495057;
+    border: none;
 }
 
 #sidebar ul.components {
     padding: 20px 0;
-
-    flex-grow: 1; /* Allows this to take up space */
 }
 
 #sidebar ul p {
@@ -87,14 +98,11 @@ html, body {
 }
 
 #sidebar ul li a {
-    padding: 20px 10px;
-    font-size: 1.2em;
-    display: block;
+    padding: 15px 20px;
+    font-size: 1.1em;
     color: #adb5bd;
     text-decoration: none;
-    display: flex;
-    justify-content: center; /* Center icons horizontally */
-    align-items: center;
+    
 }
 
 #sidebar ul li a:hover {
@@ -108,36 +116,37 @@ html, body {
 }
 
 #sidebar ul li a i {
-    margin-right: 0; /* Remove margin as text is gone */
-    font-size: 1.5em; /* Increase icon size */
-}
-
-#sidebar.active ul li a i {
-    margin-right: 0;
-    font-size: 1.4em;
-}
-
-#sidebar.active ul li a span {
-    display: none;
+    font-size: 1.2em;
+    width: 20px;
 }
 
 #sidebar ul.CTAs a {
-    text-align: center;
-    font-size: 1.2em !important; /* Adjust icon size */
-    display: block;
+    font-size: 1.1em !important;
     border-radius: 5px;
     margin-bottom: 5px;
-    padding: 20px 10px; /* Add padding */
+    padding: 15px 20px;
+    color: #adb5bd;
+    text-decoration: none;
+}
+
+#sidebar ul.CTAs a:hover {
+    color: #ffc107;
+    background: #495057;
+}
+
+#sidebar ul.CTAs a i {
+    font-size: 1.2em;
+    width: 20px;
 }
 
 #sidebar.active ul.CTAs a span {
-    display: none;
+    display: inline;
 }
 
 #content {
     width: 100%;
     padding: 0;
-    padding-left: 80px; /* Add padding to avoid overlap */
+    padding-left: 200px; /* Increase padding to match sidebar width */
     min-height: 100vh;
     transition: all 0.3s;
     display: flex;
@@ -163,7 +172,7 @@ footer {
     position: fixed;
     bottom: 0;
     width: 100%;
-    height: 55px;
+    height: 65px; /* Increased height */
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
     background-color: #343a40;
     display: flex;
@@ -180,7 +189,7 @@ footer {
     min-width: 50px;
     white-space: nowrap;
     color: #adb5bd;
-    font-size: 1.2rem;
+    font-size: 1.5rem; /* Increased icon size */
     -webkit-tap-highlight-color: transparent;
     transition: background-color 0.1s ease-in-out;
 }
@@ -200,18 +209,47 @@ footer {
     #content {
         width: 100%;
         padding-left: 0; /* Reset padding for mobile */
+        padding-bottom: 60px; /* Reduced padding - just enough to clear bottom nav */
     }
     .nav-bottom {
         display: flex;
     }
-    body {
-        padding-bottom: 55px; /* Height of the bottom nav */
+    /* Ensure footer has proper spacing on mobile */
+    footer {
+        margin-bottom: 10px; /* Minimal margin */
     }
 }
 
 @media (min-width: 769px) {
     .nav-bottom {
         display: none;
+    }
+    
+    /* Desktop sidebar layout with CTAs at bottom */
+    #sidebar {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    #sidebar ul.components {
+        flex-grow: 1; /* Takes up available space */
+    }
+    
+    #sidebar ul.CTAs {
+        margin-top: auto; /* Push to bottom */
+        padding: 20px 0;
+        position: relative; /* Enable absolute positioning for ::before */
+    }
+
+    #sidebar ul.CTAs::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 15px;
+        right: 15px;
+        height: 1px;
+        background-color: #495057;
+        border: none;
     }
 }
 

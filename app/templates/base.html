@@ -34,41 +34,48 @@
         <div class="sidebar-header">
           <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
             <img src="{{ url_for('static', filename='images/dollar64.png') }}" alt="DumpMyCash Logo" width="32" height="32">
+            Dump<span style="color:#ffc108">My</span>Cash
           </a>
         </div>
 
         <ul class="list-unstyled components">
           <li class="{{ 'active' if request.endpoint and 'home' in request.endpoint else '' }}">
-            <a href="{{ url_for('dashboard.home') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Home">
-              <i class="fas fa-home"></i>
+            <a href="{{ url_for('dashboard.home') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Home" class="d-flex align-items-center">
+              <i class="fas fa-home me-2"></i>
+              Home
             </a>
           </li>
           <li class="{{ 'active' if request.endpoint and 'account' in request.endpoint else '' }}">
-            <a href="{{ url_for('dashboard.account') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Account">
-              <i class="fas fa-wallet"></i>
+            <a href="{{ url_for('dashboard.account') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Account" class="d-flex align-items-center">
+              <i class="fas fa-wallet me-2"></i>
+              Account
             </a>
           </li>
           <li class="{{ 'active' if request.endpoint and 'transactions' in request.endpoint else '' }}">
-            <a href="{{ url_for('dashboard.transactions') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Transactions">
-              <i class="fas fa-exchange-alt"></i>
+            <a href="{{ url_for('dashboard.transactions') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Transactions" class="d-flex align-items-center">
+              <i class="fas fa-exchange-alt me-2"></i>
+              Transactions
             </a>
           </li>
           <li class="{{ 'active' if request.endpoint and 'categories' in request.endpoint else '' }}">
-            <a href="{{ url_for('dashboard.categories') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Categories">
-              <i class="fas fa-tags"></i>
+            <a href="{{ url_for('dashboard.categories') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Categories" class="d-flex align-items-center">
+              <i class="fas fa-tags me-2"></i>
+              Categories
             </a>
           </li>
         </ul>
 
         <ul class="list-unstyled CTAs">
           <li>
-            <a href="{{ url_for('dashboard.help') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Help">
-              <i class="fas fa-question-circle"></i>
+            <a href="{{ url_for('dashboard.help') }}" data-bs-toggle="tooltip" data-bs-placement="right" title="Help" class="d-flex align-items-center">
+              <i class="fas fa-question-circle me-2"></i>
+              Help
             </a>
           </li>
           <li>
-            <a href="#" class="logout" onclick="document.getElementById('logoutForm').submit(); return false;" data-bs-toggle="tooltip" data-bs-placement="right" title="Logout">
-              <i class="fas fa-sign-out-alt"></i>
+            <a href="#" class="logout d-flex align-items-center" onclick="document.getElementById('logoutForm').submit(); return false;" data-bs-toggle="tooltip" data-bs-placement="right" title="Logout">
+              <i class="fas fa-sign-out-alt me-2"></i>
+              Logout
             </a>
           </li>
         </ul>
@@ -180,7 +187,6 @@
         <a href="{{ url_for('dashboard.account') }}" class="nav-link {{ 'active' if request.endpoint and 'account' in request.endpoint else '' }}"><i class="fas fa-wallet"></i></a>
         <a href="{{ url_for('dashboard.transactions') }}" class="nav-link {{ 'active' if request.endpoint and 'transactions' in request.endpoint else '' }}"><i class="fas fa-exchange-alt"></i></a>
         <a href="{{ url_for('dashboard.categories') }}" class="nav-link {{ 'active' if request.endpoint and 'categories' in request.endpoint else '' }}"><i class="fas fa-tags"></i></a>
-        <a href="{{ url_for('dashboard.help') }}" class="nav-link {{ 'active' if request.endpoint and 'help' in request.endpoint else '' }}"><i class="fas fa-question-circle"></i></a>
     </nav>
     {% endif %}
 
