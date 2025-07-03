@@ -256,12 +256,14 @@ class TransactionManager {
     setupModal() {
         const modal = document.getElementById('transactionModal');
         const form = document.getElementById('transactionForm');
-        const saveBtn = document.getElementById('saveTransactionBtn');
         const deleteBtn = document.getElementById('deleteTransactionBtn');
         const confirmDeleteBtn = document.getElementById('confirmDeleteTransaction');
 
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => this.saveTransaction());
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveTransaction();
+            });
         }
 
         if (deleteBtn) {

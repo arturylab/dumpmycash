@@ -643,16 +643,6 @@ function viewTransferDetails(transferId) {
                                     <div>${data.description}</div>
                                 </div>
                                 ` : ''}
-                                <div class="row">
-                                    <div class="col-6">
-                                        <label class="form-label text-muted">From Transaction ID</label>
-                                        <div class="small">#${data.transactions.from_transaction_id}</div>
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label text-muted">To Transaction ID</label>
-                                        <div class="small">#${data.transactions.to_transaction_id}</div>
-                                    </div>
-                                </div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
