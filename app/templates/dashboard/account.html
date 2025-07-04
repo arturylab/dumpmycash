@@ -24,43 +24,7 @@
       </div>
     </div>
   </div>
-
-  <!-- Account Summary -->
-  <div class="row g-4 mb-4">
-    <div class="col-12">
-      <div class="card minimal-card">
-        <div class="card-body">
-          <h5 class="card-title text-center mb-4 text-muted">Account Summary</h5>
-          <div class="stats-grid">
-            <!-- Total Balance -->
-            <div class="text-center">
-              <h6 class="text-muted mb-2">Total Balance</h6>
-              <h3 class="text-success mb-0">{{ total_balance|currency }}</h3>
-            </div>
-            
-            <!-- Monthly Income -->
-            <div class="text-center">
-              <h6 class="text-muted mb-2">Monthly Income</h6>
-              <h3 class="text-info mb-0">{{ monthly_income|currency }}</h3>
-            </div>
-            
-            <!-- Monthly Expenses -->
-            <div class="text-center">
-              <h6 class="text-muted mb-2">Monthly Expenses</h6>
-              <h3 class="text-danger mb-0">{{ monthly_expenses|currency }}</h3>
-            </div>
-            
-            <!-- Net Worth -->
-            <div class="text-center">
-              <h6 class="text-muted mb-2">Net Worth</h6>
-              <h3 class="text-warning mb-0">{{ net_worth|currency }}</h3>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
+  
   <!-- Accounts Grid -->
   <div class="row g-4 mb-4">
     {% if accounts %}

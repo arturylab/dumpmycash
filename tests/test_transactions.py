@@ -378,13 +378,14 @@ class TestTransactions:
         """Test transaction filtering by date range using new time filter"""
         
         # Create transactions with different dates
+        today = datetime.now()
         old_transaction = Transaction(
             amount=50.00,
             description='Old transaction',
             account_id=account.id,
             category_id=category_expense.id,
             user_id=user.id,
-            date=datetime.now() - timedelta(days=60)
+            date=today - timedelta(days=60)  # 60 days ago
         )
         
         recent_transaction = Transaction(
@@ -393,37 +394,52 @@ class TestTransactions:
             account_id=account.id,
             category_id=category_expense.id,
             user_id=user.id,
-            date=datetime.now() - timedelta(days=10)
+            date=today - timedelta(days=10)  # 10 days ago
         )
         
-        db.session.add_all([old_transaction, recent_transaction])
+        current_transaction = Transaction(
+            amount=100.00,
+            description='Current transaction',
+            account_id=account.id,
+            category_id=category_expense.id,
+            user_id=user.id,
+            date=today  # Today
+        )
+        
+        db.session.add_all([old_transaction, recent_transaction, current_transaction])
         db.session.commit()
         
         auth_client.login()
         
-        # Test this month filter (default) - should only show recent transaction
+        # Test this month filter (default) - should show current and recent transactions
         response = client.get('/transactions/?filter=month')
         assert response.status_code == 200
-        assert b'Recent transaction' in response.data
-        assert b'Old transaction' not in response.data
+        response_text = response.data.decode('utf-8')
+        assert 'Current transaction' in response_text
+        # The recent transaction might or might not be in this month depending on the date
+        assert 'Old transaction' not in response_text
         
-        # Test this year filter - should show both transactions
+        # Test this year filter - should show all transactions from this year
         response = client.get('/transactions/?filter=year')
         assert response.status_code == 200
-        assert b'Recent transaction' in response.data
-        assert b'Old transaction' in response.data
+        response_text = response.data.decode('utf-8')
+        assert 'Current transaction' in response_text
+        assert 'Recent transaction' in response_text
+        assert 'Old transaction' in response_text
         
-        # Test all time filter - should show both transactions
+        # Test all time filter - should show all transactions
         response = client.get('/transactions/?filter=all')
         assert response.status_code == 200
-        assert b'Recent transaction' in response.data
-        assert b'Old transaction' in response.data
+        response_text = response.data.decode('utf-8')
+        assert 'Current transaction' in response_text
+        assert 'Recent transaction' in response_text
+        assert 'Old transaction' in response_text
 
     def test_custom_date_range_filtering(self, client, auth_client, user, account, category_expense, category_income):
         """Test custom date range filtering functionality"""
         
         # Create transactions with different dates
-        today = datetime.now().date()
+        today = datetime.now()
         week_ago = today - timedelta(days=7)
         month_ago = today - timedelta(days=30)
         
@@ -497,7 +513,7 @@ class TestTransactions:
         transaction = Transaction(
             amount=100.00,
             description='Test transaction',
-            date=datetime.now().date(),
+            date=datetime.now(),  # Use datetime object
             user_id=user.id,
             account_id=account.id,
             category_id=category_expense.id
@@ -530,7 +546,7 @@ class TestTransactions:
         """Test CSV export functionality"""
         
         # Create test transactions with different properties
-        today = datetime.now().date()
+        today = datetime.now()
         week_ago = today - timedelta(days=7)
         
         transactions_data = [
@@ -543,7 +559,7 @@ class TestTransactions:
             {
                 'amount': 250.75,
                 'description': 'Test income transaction',
-                'date': week_ago,
+                'date': today - timedelta(days=1),  # Make it recent so it shows up
                 'category': category_income
             },
             {
@@ -559,7 +575,7 @@ class TestTransactions:
             transaction = Transaction(
                 amount=data['amount'],
                 description=data['description'],
-                date=data['date'],
+                date=data['date'],  # Use datetime object
                 user_id=user.id,
                 account_id=account.id,
                 category_id=data['category'].id
@@ -569,8 +585,8 @@ class TestTransactions:
         db.session.commit()
         auth_client.login()
         
-        # Test basic CSV export (all transactions)
-        response = client.get('/transactions/export/csv')
+        # Test basic CSV export with 'all' filter to include all transactions
+        response = client.get('/transactions/export/csv?filter=all')
         assert response.status_code == 200
         assert response.headers['Content-Type'] == 'text/csv; charset=utf-8'
         assert 'attachment' in response.headers['Content-Disposition']
@@ -594,7 +610,7 @@ class TestTransactions:
         assert '75.25' in csv_content
         
         # Test CSV export with category filter
-        response = client.get(f'/transactions/export/csv?category_id={category_expense.id}')
+        response = client.get(f'/transactions/export/csv?category_id={category_expense.id}&filter=all')
         assert response.status_code == 200
         csv_content = response.data.decode('utf-8')
         
@@ -604,7 +620,7 @@ class TestTransactions:
         assert 'Test income transaction' not in csv_content
         
         # Test CSV export with search filter
-        response = client.get('/transactions/export/csv?search=income')
+        response = client.get('/transactions/export/csv?search=income&filter=all')
         assert response.status_code == 200
         csv_content = response.data.decode('utf-8')
         
@@ -613,7 +629,7 @@ class TestTransactions:
         assert 'Test expense transaction' not in csv_content
         
         # Test CSV export with custom date range
-        start_date = week_ago.strftime('%Y-%m-%d')
+        start_date = (today - timedelta(days=2)).strftime('%Y-%m-%d')
         end_date = today.strftime('%Y-%m-%d')
         response = client.get(f'/transactions/export/csv?filter=custom&start_date={start_date}&end_date={end_date}')
         assert response.status_code == 200
@@ -643,7 +659,7 @@ class TestTransactions:
         transaction = Transaction(
             amount=100.00,
             description='Test transaction',
-            date=datetime.now().date(),
+            date=datetime.now(),  # Use datetime object
             user_id=user.id,
             account_id=account.id,
             category_id=category_expense.id
@@ -1233,3 +1249,294 @@ class TestMobileTransactionView:
         # Both should have the same data-transaction-id
         transaction_id_count = html_content.count(f'data-transaction-id="{transaction.id}"')
         assert transaction_id_count == 2
+
+
+class TestTransactionAutocomplete:
+    """Test suite for transaction description autocomplete functionality"""
+
+    @pytest.fixture
+    def user(self, db, auth_client):
+        """Create a test user"""
+        return auth_client.create_user()
+
+    @pytest.fixture
+    def account(self, db, user):
+        """Create a test account"""
+        account = Account(
+            name='Test Account',
+            user_id=user.id,
+            balance=1000.00
+        )
+        db.session.add(account)
+        db.session.commit()
+        return account
+
+    @pytest.fixture
+    def category_expense(self, db, user):
+        """Create a test expense category"""
+        category = Category(
+            name='Food',
+            type='expense',
+            unicode_emoji='🍕',
+            user_id=user.id
+        )
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @pytest.fixture
+    def category_income(self, db, user):
+        """Create a test income category"""
+        category = Category(
+            name='Salary',
+            type='income',
+            unicode_emoji='💰',
+            user_id=user.id
+        )
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @pytest.fixture
+    def sample_transactions(self, db, user, account, category_expense, category_income):
+        """Create sample transactions for autocomplete testing"""
+        # Create transactions with various descriptions
+        transactions = [
+            Transaction(
+                amount=50.00,
+                description='Grocery shopping at Walmart',
+                date=datetime.now(),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            ),
+            Transaction(
+                amount=25.00,
+                description='Grocery shopping at Target',
+                date=datetime.now() - timedelta(days=1),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            ),
+            Transaction(
+                amount=5.00,
+                description='Coffee at Starbucks',
+                date=datetime.now() - timedelta(days=2),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            ),
+            Transaction(
+                amount=5.00,
+                description='Coffee at local cafe',
+                date=datetime.now() - timedelta(days=3),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            ),
+            Transaction(
+                amount=2000.00,
+                description='Monthly salary payment',
+                date=datetime.now() - timedelta(days=4),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_income.id
+            ),
+        ]
+        
+        db.session.add_all(transactions)
+        db.session.commit()
+        return transactions
+
+    def test_autocomplete_endpoint_requires_login(self, client):
+        """Test that autocomplete endpoint requires authentication"""
+        response = client.get('/transactions/api/descriptions')
+        assert response.status_code == 401
+
+    def test_autocomplete_endpoint_returns_suggestions(self, client, auth_client, user, sample_transactions):
+        """Test that autocomplete endpoint returns suggestions"""
+        auth_client.login()
+        
+        response = client.get('/transactions/api/descriptions')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'suggestions' in data
+        assert 'count' in data
+        assert len(data['suggestions']) > 0
+        
+        # Check that descriptions are included
+        suggestions = data['suggestions']
+        descriptions = [t.description for t in sample_transactions]
+        
+        for suggestion in suggestions:
+            assert suggestion in descriptions
+
+    def test_autocomplete_endpoint_with_search_query(self, client, auth_client, user, sample_transactions):
+        """Test that autocomplete endpoint filters by search query"""
+        auth_client.login()
+        
+        # Search for "grocery"
+        response = client.get('/transactions/api/descriptions?q=grocery')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'suggestions' in data
+        assert len(data['suggestions']) == 2  # Two grocery transactions
+        
+        suggestions = data['suggestions']
+        assert 'Grocery shopping at Walmart' in suggestions
+        assert 'Grocery shopping at Target' in suggestions
+        assert 'Coffee at Starbucks' not in suggestions
+
+    def test_autocomplete_endpoint_with_coffee_search(self, client, auth_client, user, sample_transactions):
+        """Test that autocomplete endpoint filters by coffee search"""
+        auth_client.login()
+        
+        # Search for "coffee"
+        response = client.get('/transactions/api/descriptions?q=coffee')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert 'suggestions' in data
+        assert len(data['suggestions']) == 2  # Two coffee transactions
+        
+        suggestions = data['suggestions']
+        assert 'Coffee at Starbucks' in suggestions
+        assert 'Coffee at local cafe' in suggestions
+        assert 'Grocery shopping at Walmart' not in suggestions
+
+    def test_autocomplete_endpoint_excludes_transfers(self, client, auth_client, user, account):
+        """Test that autocomplete endpoint excludes transfer transactions"""
+        # Create a transfer category
+        transfer_category = Category(
+            name='Transfer',
+            type='expense',
+            user_id=user.id
+        )
+        db.session.add(transfer_category)
+        db.session.commit()
+        
+        # Create a transfer transaction
+        transfer_transaction = Transaction(
+            amount=100.00,
+            description='Transfer to savings account',
+            date=datetime.now(),
+            user_id=user.id,
+            account_id=account.id,
+            category_id=transfer_category.id
+        )
+        db.session.add(transfer_transaction)
+        db.session.commit()
+        
+        auth_client.login()
+        
+        response = client.get('/transactions/api/descriptions')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        suggestions = data['suggestions']
+        
+        # Transfer transaction should not appear in suggestions
+        assert 'Transfer to savings account' not in suggestions
+
+    def test_autocomplete_endpoint_frequency_ordering(self, client, auth_client, user, account, category_expense):
+        """Test that autocomplete endpoint orders suggestions by frequency"""
+        # Create transactions with same description multiple times
+        for i in range(3):
+            transaction = Transaction(
+                amount=10.00,
+                description='Frequent description',
+                date=datetime.now() - timedelta(days=i),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            )
+            db.session.add(transaction)
+        
+        # Create a single transaction with different description
+        single_transaction = Transaction(
+            amount=20.00,
+            description='Single description',
+            date=datetime.now(),
+            user_id=user.id,
+            account_id=account.id,
+            category_id=category_expense.id
+        )
+        db.session.add(single_transaction)
+        db.session.commit()
+        
+        auth_client.login()
+        
+        response = client.get('/transactions/api/descriptions')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        suggestions = data['suggestions']
+        
+        # The frequent description should come first
+        assert 'Frequent description' in suggestions
+        assert 'Single description' in suggestions
+        assert suggestions.index('Frequent description') < suggestions.index('Single description')
+
+    def test_autocomplete_endpoint_limit_parameter(self, client, auth_client, user, account, category_expense):
+        """Test that autocomplete endpoint respects limit parameter"""
+        # Create many transactions with unique descriptions
+        for i in range(15):
+            transaction = Transaction(
+                amount=10.00,
+                description=f'Description {i}',
+                date=datetime.now() - timedelta(days=i),
+                user_id=user.id,
+                account_id=account.id,
+                category_id=category_expense.id
+            )
+            db.session.add(transaction)
+        db.session.commit()
+        
+        auth_client.login()
+        
+        # Test with limit=5
+        response = client.get('/transactions/api/descriptions?limit=5')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert len(data['suggestions']) == 5
+        assert data['count'] == 5
+
+    def test_autocomplete_endpoint_case_insensitive(self, client, auth_client, user, sample_transactions):
+        """Test that autocomplete endpoint is case insensitive"""
+        auth_client.login()
+        
+        # Search with different cases
+        test_cases = ['GROCERY', 'grocery', 'Grocery', 'gRoCeRy']
+        
+        for query in test_cases:
+            response = client.get(f'/transactions/api/descriptions?q={query}')
+            assert response.status_code == 200
+            
+            data = response.get_json()
+            assert len(data['suggestions']) == 2  # Two grocery transactions
+            
+            suggestions = data['suggestions']
+            assert 'Grocery shopping at Walmart' in suggestions
+            assert 'Grocery shopping at Target' in suggestions
+
+    def test_autocomplete_javascript_integration(self, client, auth_client, user, account, category_expense):
+        """Test that the JavaScript autocomplete setup is present in the template"""
+        auth_client.login()
+        
+        response = client.get('/transactions/')
+        assert response.status_code == 200
+        
+        html_content = response.get_data(as_text=True)
+        
+        # Check that the JavaScript file is included
+        assert 'transactions.js' in html_content
+        
+        # Check that the description field exists
+        assert 'id="description"' in html_content
+        assert 'name="description"' in html_content
+        
+        # Check that the modal setup is present
+        assert 'transactionModal' in html_content

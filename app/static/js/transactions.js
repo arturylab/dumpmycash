@@ -276,6 +276,222 @@ class TransactionManager {
 
         if (modal) {
             modal.addEventListener('hidden.bs.modal', () => this.handleModalHidden());
+            modal.addEventListener('shown.bs.modal', () => this.setupDescriptionAutocomplete());
+        }
+    }
+
+    /**
+     * Setup description autocomplete functionality
+     */
+    setupDescriptionAutocomplete() {
+        const descriptionField = document.getElementById('description');
+        if (!descriptionField) return;
+
+        // Remove any existing autocomplete setup
+        this.cleanupDescriptionAutocomplete();
+
+        // Create autocomplete container
+        const container = document.createElement('div');
+        container.className = 'autocomplete-container';
+        container.style.position = 'relative';
+        
+        // Wrap the textarea with the container
+        const parent = descriptionField.parentNode;
+        parent.insertBefore(container, descriptionField);
+        container.appendChild(descriptionField);
+
+        // Create suggestions dropdown
+        const dropdown = document.createElement('div');
+        dropdown.className = 'autocomplete-dropdown';
+        dropdown.style.cssText = `
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ced4da;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        `;
+        container.appendChild(dropdown);
+
+        // Store references for cleanup
+        this.autocompleteContainer = container;
+        this.autocompleteDropdown = dropdown;
+
+        // Setup event listeners
+        let debounceTimeout;
+        descriptionField.addEventListener('input', (e) => {
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(() => {
+                this.handleDescriptionInput(e.target.value, dropdown);
+            }, 300);
+        });
+
+        descriptionField.addEventListener('keydown', (e) => {
+            this.handleDescriptionKeydown(e, dropdown);
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!container.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    /**
+     * Handle description input for autocomplete
+     * @param {string} value - Current input value
+     * @param {HTMLElement} dropdown - Dropdown element
+     */
+    async handleDescriptionInput(value, dropdown) {
+        if (!value.trim() || value.length < 2) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        try {
+            const response = await fetch(`/transactions/api/descriptions?q=${encodeURIComponent(value)}&limit=8`);
+            if (!response.ok) return;
+
+            const data = await response.json();
+            this.displaySuggestions(data.suggestions, dropdown, value);
+        } catch (error) {
+            console.error('Error fetching autocomplete suggestions:', error);
+        }
+    }
+
+    /**
+     * Display autocomplete suggestions
+     * @param {Array} suggestions - Array of suggestion strings
+     * @param {HTMLElement} dropdown - Dropdown element
+     * @param {string} query - Current query string
+     */
+    displaySuggestions(suggestions, dropdown, query) {
+        dropdown.innerHTML = '';
+        
+        if (suggestions.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        suggestions.forEach((suggestion, index) => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            item.style.cssText = `
+                padding: 8px 12px;
+                cursor: pointer;
+                border-bottom: 1px solid #f1f3f4;
+                font-size: 0.875rem;
+                transition: background-color 0.2s;
+            `;
+            
+            // Highlight matching text
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            const highlightedText = suggestion.replace(regex, '<strong>$1</strong>');
+            item.innerHTML = highlightedText;
+            
+            // Add hover effects
+            item.addEventListener('mouseenter', () => {
+                item.style.backgroundColor = '#f8f9fa';
+                // Remove active class from other items
+                dropdown.querySelectorAll('.autocomplete-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+            });
+            
+            item.addEventListener('mouseleave', () => {
+                item.style.backgroundColor = '';
+            });
+            
+            // Handle click
+            item.addEventListener('click', () => {
+                this.selectSuggestion(suggestion, dropdown);
+            });
+            
+            dropdown.appendChild(item);
+        });
+
+        dropdown.style.display = 'block';
+    }
+
+    /**
+     * Handle keyboard navigation in description field
+     * @param {KeyboardEvent} e - Keyboard event
+     * @param {HTMLElement} dropdown - Dropdown element
+     */
+    handleDescriptionKeydown(e, dropdown) {
+        if (dropdown.style.display === 'none') return;
+
+        const items = dropdown.querySelectorAll('.autocomplete-item');
+        let activeItem = dropdown.querySelector('.autocomplete-item.active');
+        let activeIndex = Array.from(items).indexOf(activeItem);
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                if (activeItem) activeItem.classList.remove('active');
+                activeIndex = activeIndex < items.length - 1 ? activeIndex + 1 : 0;
+                items[activeIndex].classList.add('active');
+                items[activeIndex].style.backgroundColor = '#f8f9fa';
+                break;
+
+            case 'ArrowUp':
+                e.preventDefault();
+                if (activeItem) activeItem.classList.remove('active');
+                activeIndex = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
+                items[activeIndex].classList.add('active');
+                items[activeIndex].style.backgroundColor = '#f8f9fa';
+                break;
+
+            case 'Enter':
+                if (activeItem) {
+                    e.preventDefault();
+                    this.selectSuggestion(activeItem.textContent, dropdown);
+                }
+                break;
+
+            case 'Escape':
+                dropdown.style.display = 'none';
+                break;
+        }
+    }
+
+    /**
+     * Select a suggestion from autocomplete
+     * @param {string} suggestion - Selected suggestion text
+     * @param {HTMLElement} dropdown - Dropdown element
+     */
+    selectSuggestion(suggestion, dropdown) {
+        const descriptionField = document.getElementById('description');
+        if (descriptionField) {
+            descriptionField.value = suggestion;
+            descriptionField.focus();
+            // Move cursor to end
+            descriptionField.setSelectionRange(suggestion.length, suggestion.length);
+        }
+        dropdown.style.display = 'none';
+    }
+
+    /**
+     * Clean up autocomplete elements
+     */
+    cleanupDescriptionAutocomplete() {
+        if (this.autocompleteContainer) {
+            // Move description field back to original location
+            const descriptionField = document.getElementById('description');
+            const originalParent = this.autocompleteContainer.parentNode;
+            if (descriptionField && originalParent) {
+                originalParent.insertBefore(descriptionField, this.autocompleteContainer);
+                this.autocompleteContainer.remove();
+            }
+            this.autocompleteContainer = null;
+            this.autocompleteDropdown = null;
         }
     }
 
@@ -285,6 +501,7 @@ class TransactionManager {
     handleModalHidden() {
         this.resetForm();
         this.cleanupModalBackdrop();
+        this.cleanupDescriptionAutocomplete();
     }
 
     /**

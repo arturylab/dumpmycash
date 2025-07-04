@@ -22,56 +22,13 @@ MAX_TRANSFERS_PER_PAGE = 100
 account_bp = Blueprint('account', __name__, url_prefix='/account')
 
 
-def _calculate_monthly_stats(user_id):
-    """
-    Calculate monthly income and expenses excluding transfers.
-    
-    Args:
-        user_id (int): User ID
-        
-    Returns:
-        tuple: (monthly_income, monthly_expenses)
-    """
-    current_month = datetime.now().replace(day=1)
-    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    
-    # Get transactions for current month excluding transfers
-    monthly_transactions = db.session.query(Transaction).join(Account).join(Category).filter(
-        Account.user_id == user_id,
-        Transaction.date >= current_month,
-        Transaction.date < next_month,
-        Category.name != TRANSFER_CATEGORY_NAME
-    ).all()
-    
-    monthly_income = 0.0
-    monthly_expenses = 0.0
-    
-    for transaction in monthly_transactions:
-        if transaction.category and transaction.category.type == 'income':
-            monthly_income += transaction.amount
-        elif transaction.category and transaction.category.type == 'expense':
-            monthly_expenses += transaction.amount
-    
-    return monthly_income, monthly_expenses
-
-
 @account_bp.route('/')
 @login_required
 def index():
-    """Display all accounts for the current user with summary statistics."""
+    """Display all accounts for the current user."""
     accounts = Account.query.filter_by(user_id=g.user.id).order_by(Account.name.asc()).all()
     
-    # Calculate summary statistics
-    total_balance = sum(account.balance for account in accounts)
-    monthly_income, monthly_expenses = _calculate_monthly_stats(g.user.id)
-    net_worth = total_balance
-    
-    return render_template('dashboard/account.html', 
-                         accounts=accounts,
-                         total_balance=total_balance,
-                         monthly_income=monthly_income,
-                         monthly_expenses=monthly_expenses,
-                         net_worth=net_worth)
+    return render_template('dashboard/account.html', accounts=accounts)
 
 
 def _create_initial_deposit_if_needed(account, balance):
@@ -446,25 +403,6 @@ def api_chart_data():
             chart_data['backgroundColor'].append(account.color or DEFAULT_ACCOUNT_COLOR)
     
     return jsonify(chart_data)
-
-
-@account_bp.route('/api/summary')
-@login_required
-def api_summary():
-    """API endpoint to get account summary statistics."""
-    accounts = Account.query.filter_by(user_id=g.user.id).all()
-    
-    total_balance = sum(account.balance for account in accounts)
-    monthly_income, monthly_expenses = _calculate_monthly_stats(g.user.id)
-    net_worth = total_balance
-    
-    return jsonify({
-        'total_balance': total_balance,
-        'monthly_income': monthly_income,
-        'monthly_expenses': monthly_expenses,
-        'net_worth': net_worth,
-        'account_count': len(accounts)
-    })
 
 
 def _format_transfer_data(transfer):

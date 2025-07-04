@@ -116,10 +116,10 @@ def sample_transactions(app, db, test_user, sample_categories):
             user_id=test_user.id
         )
         
-        # This month's transactions (15 days ago)
+        # This month's transactions (2 days ago, to ensure it's in current month)
         month_expense = Transaction(
             amount=200.0,
-            date=now - timedelta(days=15),
+            date=now - timedelta(days=2),
             description='Month Expense',
             account_id=account.id,
             category_id=sample_categories['expense'].id,
@@ -570,11 +570,10 @@ class TestCategoriesTimeFiltering:
         assert response.status_code == 200
         
         # Check that week totals include this week's transactions
-        # (3 days ago is Monday of current week, so it should be included)
-        # Week total: $500 (today) + $300 (3 days ago) = $800 income, $100 expense
+        # Week total: $500 (today) + $300 (3 days ago) = $800 income, $100 (today) + $200 (2 days ago) = $300 expense
         response_text = response.data.decode('utf-8')
         assert '$800.00' in response_text  # Week's total income (today + 3 days ago)
-        assert '$100.00' in response_text  # Week's total expense
+        assert '$300.00' in response_text  # Week's total expense (today + 2 days ago)
     
     def test_category_totals_with_month_filter(self, logged_in_client, sample_transactions):
         """Test that month filter shows this month's transactions."""
@@ -618,7 +617,7 @@ class TestCategoriesTimeFiltering:
         assert data['success'] is True
         assert data['stats']['filter'] == 'week'
         assert data['stats']['total_income'] == 800.0  # Today (500) + 3 days ago (300) = 800
-        assert data['stats']['total_expenses'] == 100.0
+        assert data['stats']['total_expenses'] == 300.0  # Today (100) + 2 days ago (200) = 300
         
         # Test month filter
         response = logged_in_client.get('/categories/api/categories/stats?filter=month')

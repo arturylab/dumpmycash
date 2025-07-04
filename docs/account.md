@@ -1,13 +1,15 @@
 # Account Management
 
-Manage financial accounts and balances.
+Manage financial accounts and track balances.
 
 ## Features
 
-- **Create Accounts**: Add new financial accounts
-- **View Balance**: Monitor current account balances
-- **Account Colors**: Visual identification with custom colors
-- **Balance History**: Track balance changes over time
+- **Create Accounts**: Add new financial accounts with custom colors
+- **View Accounts**: Monitor individual account balances in a grid layout
+- **Account Colors**: Visual identification with custom color selection
+- **Quick Transfers**: Transfer money between accounts seamlessly
+- **Chart Visualization**: Balance distribution pie chart
+- **Recent Transfers**: View and manage transfer history
 
 ## Account Properties
 
@@ -20,21 +22,26 @@ Manage financial accounts and balances.
 
 ### Create Account
 - Set account name
-- Choose identification color
-- Set initial balance (optional)
+- Choose identification color from predefined palette
+- Set initial balance (creates initial deposit transaction if > 0)
 
 ### View Accounts
-- List all user accounts
-- Display current balances
-- Show account colors for identification
+- Grid layout showing all user accounts
+- Display current balances with color coding
+- Quick action buttons for transfers and new accounts
 
-### Balance Calculation
-Account balance is automatically updated based on:
-- **Income transactions**: Add to balance
-- **Expense transactions**: Subtract from balance
-- **Transfers**: Move money between accounts
+### Account Management
+- Edit account name, balance, and color
+- Delete accounts (restrictions apply)
+- Balance adjustments create corresponding transactions
+
+### Transfers
+- Quick transfer between accounts
+- Transfer history with reverse functionality
+- Automatic balance updates
 
 ## Restrictions
 
 - Accounts with associated transactions or transfers cannot be deleted
 - Must remove or reassign all related transactions first
+- Balance adjustments create audit trail transactions

@@ -104,7 +104,6 @@ class TestAccountAuthenticated:
         assert b'Savings' in response.data
         assert b'$1,000.00' in response.data
         assert b'$2,000.00' in response.data
-        assert b'$3,000.00' in response.data  # Total balance
     
     def test_account_edit_valid(self, client, app):
         """Test editing an existing account."""
@@ -326,29 +325,6 @@ class TestAccountAPI:
         account_names = [acc['name'] for acc in data]
         assert 'API Test 1' in account_names
         assert 'API Test 2' in account_names
-    
-    def test_api_summary(self, client, app):
-        """Test API summary endpoint."""
-        # Create test accounts
-        with app.app_context():
-            account1 = Account(name='Summary Test 1', balance=500.0, user_id=self.user.id)
-            account2 = Account(name='Summary Test 2', balance=300.0, user_id=self.user.id)
-            db.session.add(account1)
-            db.session.add(account2)
-            db.session.commit()
-        
-        response = client.get('/account/api/summary')
-        assert response.status_code == 200
-        
-        data = response.get_json()
-        assert data['total_balance'] == 800.0
-        assert data['account_count'] == 2
-        assert 'monthly_income' in data
-        assert 'monthly_expenses' in data
-        assert 'net_worth' in data
-        # Monthly income and expenses will be 0.0 since no transactions exist
-        assert data['monthly_income'] == 0.0
-        assert data['monthly_expenses'] == 0.0
 
 
 class TestAccountSecurity:
@@ -919,150 +895,6 @@ class TestAccountColor:
         assert len(data['backgroundColor']) == len(data['labels'])
 
 
-class TestAccountMonthlyIncomeCalculation:
-    """Test improved monthly income calculation."""
-    
-    @pytest.fixture(autouse=True)  
-    def setup_user(self, auth_client):
-        """Create and login a user for each test in this class."""
-        self.user = auth_client.create_user(
-            username="incomeuser",
-            email="income@example.com", 
-            password="Password123!"
-        )
-        auth_client.login(email="income@example.com", password="Password123!")
-    
-    def test_monthly_income_calculation_with_proper_joins(self, client, app):
-        """Test that monthly income calculation handles missing categories properly."""
-        from app.models import Category
-        
-        # Create test account with 0 balance to avoid initial deposit transaction
-        client.post('/account/create', data={
-            'name': 'Test Account',
-            'balance': '0.00',
-            'color': '#FF6384'
-        })
-        
-        with app.app_context():
-            account = Account.query.filter_by(name='Test Account').first()
-            
-            # Update account balance manually to avoid initial deposit transaction
-            account.balance = 1000.0
-            
-            # Create income category
-            income_category = Category(
-                name='Salary',
-                type='income',
-                user_id=self.user.id
-            )
-            db.session.add(income_category)
-            
-            # Create expense category
-            expense_category = Category(
-                name='Food',
-                type='expense', 
-                user_id=self.user.id
-            )
-            db.session.add(expense_category)
-            db.session.commit()
-            
-            # Create income transaction
-            income_transaction = Transaction(
-                amount=2000.0,
-                description='Monthly Salary',
-                account_id=account.id,
-                category_id=income_category.id,
-                user_id=self.user.id,
-                date=datetime.now()
-            )
-            db.session.add(income_transaction)
-            
-            # Create expense transaction
-            expense_transaction = Transaction(
-                amount=500.0,
-                description='Groceries',
-                account_id=account.id,
-                category_id=expense_category.id,
-                user_id=self.user.id,
-                date=datetime.now()
-            )
-            db.session.add(expense_transaction)
-            db.session.commit()
-        
-        # Test API endpoint
-        response = client.get('/account/api/summary')
-        assert response.status_code == 200
-        
-        data = response.get_json()
-        assert data['monthly_income'] == 2000.0
-        assert data['monthly_expenses'] == 500.0
-        assert data['total_balance'] == 1000.0
-    
-    def test_monthly_income_with_mixed_categories(self, client, app):
-        """Test that calculation properly separates income and expense categories."""
-        from app.models import Category
-        
-        # Create test account with 0 balance to avoid initial deposit transaction
-        client.post('/account/create', data={
-            'name': 'Test Account 2',
-            'balance': '0.00',
-            'color': '#36A2EB'
-        })
-        
-        with app.app_context():
-            account = Account.query.filter_by(name='Test Account 2').first()
-            
-            # Update account balance manually to avoid initial deposit transaction
-            account.balance = 500.0
-            
-            # Create mixed categories
-            income_category = Category(
-                name='Freelance',
-                type='income',
-                user_id=self.user.id
-            )
-            expense_category = Category(
-                name='Rent',
-                type='expense',
-                user_id=self.user.id
-            )
-            db.session.add(income_category)
-            db.session.add(expense_category)
-            db.session.commit()
-            
-            # Create mixed transactions
-            income_transaction = Transaction(
-                amount=1500.0,
-                description='Freelance Project',
-                account_id=account.id,
-                category_id=income_category.id,
-                user_id=self.user.id,
-                date=datetime.now()
-            )
-            
-            expense_transaction = Transaction(
-                amount=800.0,
-                description='Monthly Rent',
-                account_id=account.id,
-                category_id=expense_category.id,
-                user_id=self.user.id,
-                date=datetime.now()
-            )
-            
-            db.session.add(income_transaction)
-            db.session.add(expense_transaction)
-            db.session.commit()
-        
-        # Test API endpoint
-        response = client.get('/account/api/summary')
-        assert response.status_code == 200
-        
-        data = response.get_json()
-        assert data['monthly_income'] == 1500.0
-        assert data['monthly_expenses'] == 800.0
-        assert data['total_balance'] == 500.0
-
-
 class TestAccountInitialDeposit:
     """Test account initial deposit functionality."""
     
@@ -1170,29 +1002,6 @@ class TestAccountInitialDeposit:
             assert 1000.0 in amounts
             assert 500.0 in amounts
     
-    def test_initial_deposit_included_in_income_statistics(self, client, app):
-        """Test that initial deposit transactions are included in income statistics."""
-        initial_balance = 2000.0
-        
-        # Create account with initial balance
-        client.post('/account/create', data={
-            'name': 'Test Account',
-            'balance': str(initial_balance),
-            'color': '#FF6384'
-        })
-        
-        # Get account summary
-        response = client.get('/account/api/summary')
-        assert response.status_code == 200
-        
-        data = response.get_json()
-        
-        # Initial deposit should be included in monthly income
-        assert data['monthly_income'] == initial_balance
-        assert data['monthly_expenses'] == 0.0
-        assert data['total_balance'] == initial_balance
-
-
 class TestReverseTransferModal:
     """Test reverse transfer modal functionality."""
     

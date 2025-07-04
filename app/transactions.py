@@ -915,3 +915,54 @@ def transaction_error(operation):
     error_message = request.args.get('message', 'An error occurred during the operation.')
     flash(error_message, 'error')
     return redirect(url_for('transactions.list_transactions'))
+
+@transaction_bp.route('/api/descriptions')
+@api_login_required
+def api_description_autocomplete():
+    """
+    API endpoint to get transaction description suggestions for autocomplete.
+    
+    Returns unique, non-empty transaction descriptions from user's history,
+    ordered by frequency of use (most used first).
+    
+    Query Parameters:
+        q (str): Optional search query to filter descriptions
+        limit (int): Maximum number of suggestions to return (default: 10)
+    
+    Returns:
+        JSON: List of description suggestions
+    """
+    search_query = request.args.get('q', '').strip()
+    limit = request.args.get('limit', 10, type=int)
+    
+    # Build base query for user's transactions with non-empty descriptions
+    query = db.session.query(
+        Transaction.description,
+        func.count(Transaction.description).label('frequency')
+    ).filter(
+        Transaction.user_id == g.user.id,
+        Transaction.description.isnot(None),
+        Transaction.description != '',
+        # Exclude transfer transactions
+        ~Transaction.category.has(Category.name == 'Transfer')
+    )
+    
+    # Apply search filter if provided
+    if search_query:
+        query = query.filter(
+            Transaction.description.ilike(f'%{search_query}%')
+        )
+    
+    # Group by description, order by frequency (most used first), limit results
+    descriptions = query.group_by(Transaction.description)\
+                       .order_by(desc('frequency'))\
+                       .limit(limit)\
+                       .all()
+    
+    # Extract just the description strings
+    suggestions = [desc.description for desc in descriptions]
+    
+    return jsonify({
+        'suggestions': suggestions,
+        'count': len(suggestions)
+    })
