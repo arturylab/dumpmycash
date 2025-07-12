@@ -14,7 +14,9 @@ const DASHBOARD_CONFIG = {
     apiEndpoints: {
         stats: '/home/api/stats',
         categoryBreakdown: '/home/api/category-breakdown',
-        weeklyExpenses: '/home/api/weekly-expenses'
+        weeklyExpenses: '/home/api/weekly-expenses',
+        monthlyExpenses: '/home/api/monthly-expenses',
+        dailyExpenses: '/home/api/daily-expenses'
     },
     navigation: {
         transactions: '/transactions',
@@ -163,112 +165,33 @@ function initializeCharts() {
         return;
     }
     
-    initializeCategoryChart();
-    initializeWeeklyExpensesChart();
+    initializeDailyExpensesChart();
+    initializeMonthlyExpensesChart();
 }
 
 /**
- * Initialize category breakdown chart
+ * Initialize daily expenses chart
  */
-async function initializeCategoryChart() {
-    const chartContainer = document.getElementById('category-chart');
+async function initializeDailyExpensesChart() {
+    const chartContainer = document.getElementById('daily-expenses-chart');
     if (!chartContainer) return;
     
     try {
-        const response = await fetch(`${DASHBOARD_CONFIG.apiEndpoints.categoryBreakdown}?days=30`);
-        const data = await response.json();
-        
-        if (data.status === 'success' && data.data.categories.length > 0) {
-            const ctx = chartContainer.getContext('2d');
-            
-            // Destroy existing chart if it exists
-            if (dashboardState.charts.category) {
-                dashboardState.charts.category.destroy();
-            }
-            
-            dashboardState.charts.category = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: data.data.categories.map(cat => cat.name),
-                    datasets: [{
-                        data: data.data.categories.map(cat => cat.amount),
-                        backgroundColor: DASHBOARD_CONFIG.chartColors,
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const category = data.data.categories[context.dataIndex];
-                                    return `${category.name}: ${category.formatted_amount} (${category.percentage}%)`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            
-            updateCategoryList(data.data.categories);
-        }
-    } catch (error) {
-        console.error('Error initializing category chart:', error);
-    }
-}
-
-/**
- * Update category list with percentages
- * @param {Array} categories - Category data array
- */
-function updateCategoryList(categories) {
-    const listContainer = document.getElementById('category-list');
-    if (!listContainer) return;
-    
-    const displayCategories = categories.slice(0, DASHBOARD_CONFIG.maxCategoryDisplay);
-    
-    const listHTML = displayCategories.map((category, index) => `
-        <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
-            <div class="d-flex align-items-center">
-                <div class="me-2" style="width: 12px; height: 12px; background-color: ${DASHBOARD_CONFIG.chartColors[index]}; border-radius: 50%;"></div>
-                <span class="small">${escapeHtml(category.name)}</span>
-            </div>
-            <div class="text-end">
-                <div class="fw-bold small">${category.formatted_amount}</div>
-                <div class="text-muted" style="font-size: 0.75rem;">${category.percentage}%</div>
-            </div>
-        </div>
-    `).join('');
-    
-    listContainer.innerHTML = listHTML;
-}
-
-/**
- * Initialize weekly expenses chart
- */
-async function initializeWeeklyExpensesChart() {
-    const chartContainer = document.getElementById('weekly-expenses-chart');
-    if (!chartContainer) return;
-    
-    try {
-        const response = await fetch(DASHBOARD_CONFIG.apiEndpoints.weeklyExpenses);
+        const response = await fetch(DASHBOARD_CONFIG.apiEndpoints.dailyExpenses);
         const data = await response.json();
         
         if (data.status === 'success') {
             const ctx = chartContainer.getContext('2d');
             
             // Destroy existing chart if it exists
-            if (dashboardState.charts.weeklyExpenses) {
-                dashboardState.charts.weeklyExpenses.destroy();
+            if (dashboardState.charts.dailyExpenses) {
+                dashboardState.charts.dailyExpenses.destroy();
             }
             
-            dashboardState.charts.weeklyExpenses = new Chart(ctx, {
+            dashboardState.charts.dailyExpenses = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: data.data.map(day => day.day_name),
+                    labels: data.data.map(day => day.day),
                     datasets: [{
                         label: 'Expenses',
                         data: data.data.map(day => day.expenses),
@@ -289,6 +212,12 @@ async function initializeWeeklyExpensesChart() {
                                     return formatCurrency(value);
                                 }
                             }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Day of Month'
+                            }
                         }
                     },
                     plugins: {
@@ -296,7 +225,7 @@ async function initializeWeeklyExpensesChart() {
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return `Expenses: ${formatCurrency(context.parsed.y)}`;
+                                    return `Day ${context.label}: ${formatCurrency(context.parsed.y)}`;
                                 }
                             }
                         }
@@ -305,7 +234,76 @@ async function initializeWeeklyExpensesChart() {
             });
         }
     } catch (error) {
-        console.error('Error initializing weekly expenses chart:', error);
+        console.error('Error initializing daily expenses chart:', error);
+    }
+}
+
+/**
+ * Initialize monthly expenses chart
+ */
+async function initializeMonthlyExpensesChart() {
+    const chartContainer = document.getElementById('monthly-expenses-chart');
+    if (!chartContainer) return;
+    
+    try {
+        const response = await fetch(DASHBOARD_CONFIG.apiEndpoints.monthlyExpenses);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const ctx = chartContainer.getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (dashboardState.charts.monthlyExpenses) {
+                dashboardState.charts.monthlyExpenses.destroy();
+            }
+            
+            dashboardState.charts.monthlyExpenses = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.data.map(month => month.month_name),
+                    datasets: [{
+                        label: 'Expenses',
+                        data: data.data.map(month => month.expenses),
+                        backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                        borderColor: '#dc3545',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Month (Current Year)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${formatCurrency(context.parsed.y)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error initializing monthly expenses chart:', error);
     }
 }
 

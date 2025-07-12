@@ -409,3 +409,97 @@ def api_weekly_expenses():
             'status': 'error',
             'message': 'Failed to fetch weekly expenses data'
         }), 500
+
+@home.route('/api/daily-expenses')
+@login_required
+def api_daily_expenses():
+    """API endpoint for daily expenses breakdown of current month."""
+    try:
+        now = datetime.now()
+        current_month_start = datetime(now.year, now.month, 1)
+        
+        # Calculate last day of current month
+        month_start, current_month_end = _get_month_boundaries(now.year, now.month)
+        
+        daily_data = []
+        current_date = current_month_start
+        
+        while current_date <= current_month_end:
+            day_start = current_date
+            day_end = current_date.replace(hour=23, minute=59, second=59)
+            
+            # Calculate daily expenses
+            daily_expenses = db.session.query(
+                func.coalesce(func.sum(Transaction.amount), 0)
+            ).filter(
+                _get_transaction_filter(g.user.id, 'expense'),
+                Transaction.date >= day_start,
+                Transaction.date <= day_end
+            ).scalar()
+            
+            daily_data.append({
+                'day': current_date.day,
+                'day_name': f"Day {current_date.day}",
+                'date': current_date.strftime('%Y-%m-%d'),
+                'expenses': float(daily_expenses)
+            })
+            
+            current_date += timedelta(days=1)
+        
+        return jsonify({
+            'status': 'success',
+            'data': daily_data
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching daily expenses: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch daily expenses data'
+        }), 500
+
+
+@home.route('/api/monthly-expenses')
+@login_required
+def api_monthly_expenses():
+    """API endpoint for monthly expenses breakdown of current year."""
+    try:
+        now = datetime.now()
+        monthly_data = []
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        # Get all months of current year
+        for month_num in range(1, 13):
+            # Get month boundaries
+            month_start, month_end = _get_month_boundaries(now.year, month_num)
+            
+            # Get expenses for this month
+            monthly_expenses = db.session.query(
+                func.coalesce(func.sum(Transaction.amount), 0)
+            ).filter(
+                _get_transaction_filter(g.user.id, 'expense'),
+                Transaction.date >= month_start,
+                Transaction.date <= month_end
+            ).scalar()
+            
+            monthly_data.append({
+                'month': f"{month_names[month_num-1]} {now.year}",
+                'month_name': month_names[month_num-1],
+                'year': now.year,
+                'expenses': float(monthly_expenses)
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'data': monthly_data
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching monthly expenses: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch monthly expenses data'
+        }), 500
+
+

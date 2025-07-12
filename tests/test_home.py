@@ -81,8 +81,8 @@ class TestHomeDashboard:
         assert b'Total Balance' in response.data
         assert b'Financial Overview' in response.data
         assert b'Quick Actions' in response.data
-        assert b'Category Breakdown' in response.data
-        assert b'Weekly Expenses' in response.data
+        assert b'Daily Expenses' in response.data
+        assert b'Monthly Expenses' in response.data
         # Since both transactions are expenses, balance should be -$150.00
         assert b'-$150.00' in response.data  # Total balance (0 - 100 - 50)
     
@@ -605,3 +605,184 @@ class TestHomeDashboard:
         # Check other days have 0.0 expenses
         for i in [1, 3, 4, 5, 6]:  # Tue, Thu, Fri, Sat, Sun
             assert weekly_data[i]['expenses'] == 0.0
+    
+    def test_api_daily_expenses(self, client, auth_client, db):
+        """Test API daily expenses endpoint."""
+        user = auth_client.create_user()
+        auth_client.login()
+        
+        # Create expense category
+        expense_category = Category(name="Food", type="expense", user_id=user.id)
+        db.session.add(expense_category)
+        db.session.commit()
+        
+        # Create an account
+        account = Account(name="Test Account", user_id=user.id, balance=1000.0)
+        db.session.add(account)
+        db.session.commit()
+        
+        # Create transactions for different days of current month
+        now = datetime.now()
+        current_month_start = datetime(now.year, now.month, 1)
+        
+        transactions = [
+            Transaction(
+                amount=50.0,
+                description="Day 1 Expense",
+                date=current_month_start.replace(day=1),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            ),
+            Transaction(
+                amount=75.0,
+                description="Day 3 Expense",
+                date=current_month_start.replace(day=3),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            ),
+            Transaction(
+                amount=25.0,
+                description="Day 3 Another Expense",
+                date=current_month_start.replace(day=3),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            )
+        ]
+        
+        db.session.add_all(transactions)
+        db.session.commit()
+        
+        response = client.get('/home/api/daily-expenses')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data['status'] == 'success'
+        
+        daily_data = data['data']
+        assert len(daily_data) > 0  # Should have days from current month
+        
+        # Check data structure
+        first_day = daily_data[0]
+        required_fields = ['day', 'day_name', 'date', 'expenses']
+        for field in required_fields:
+            assert field in first_day
+        
+        # Find day 1 and verify expenses
+        day_1_data = next((d for d in daily_data if d['day'] == 1), None)
+        assert day_1_data is not None
+        assert day_1_data['expenses'] == 50.0
+        
+        # Find day 3 and verify combined expenses
+        day_3_data = next((d for d in daily_data if d['day'] == 3), None)
+        assert day_3_data is not None
+        assert day_3_data['expenses'] == 100.0  # 75 + 25
+        
+        # Check that other days have 0.0 expenses
+        day_2_data = next((d for d in daily_data if d['day'] == 2), None)
+        assert day_2_data is not None
+        assert day_2_data['expenses'] == 0.0
+
+    def test_api_monthly_expenses_current_year(self, client, auth_client, db):
+        """Test API monthly expenses endpoint for current year."""
+        user = auth_client.create_user()
+        auth_client.login()
+        
+        # Create expense category
+        expense_category = Category(name="General", type="expense", user_id=user.id)
+        db.session.add(expense_category)
+        db.session.commit()
+        
+        # Create an account
+        account = Account(name="Test Account", user_id=user.id, balance=1000.0)
+        db.session.add(account)
+        db.session.commit()
+        
+        # Create transactions for different months of current year
+        now = datetime.now()
+        current_year = now.year
+        
+        transactions = [
+            # January expense
+            Transaction(
+                amount=200.0,
+                description="January Expense",
+                date=datetime(current_year, 1, 15),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            ),
+            # March expense
+            Transaction(
+                amount=300.0,
+                description="March Expense",
+                date=datetime(current_year, 3, 10),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            ),
+            # Current month expense
+            Transaction(
+                amount=150.0,
+                description="Current Month Expense",
+                date=datetime(current_year, now.month, 5),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            ),
+            # Previous year expense (should not appear)
+            Transaction(
+                amount=500.0,
+                description="Previous Year Expense",
+                date=datetime(current_year - 1, 12, 25),
+                user_id=user.id,
+                category_id=expense_category.id,
+                account_id=account.id
+            )
+        ]
+        
+        db.session.add_all(transactions)
+        db.session.commit()
+        
+        response = client.get('/home/api/monthly-expenses')
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data['status'] == 'success'
+        
+        monthly_data = data['data']
+        assert len(monthly_data) == 12  # Should have 12 months
+        
+        # Check data structure
+        first_month = monthly_data[0]
+        required_fields = ['month', 'month_name', 'year', 'expenses']
+        for field in required_fields:
+            assert field in first_month
+        
+        # All months should be from current year
+        for month_data in monthly_data:
+            assert month_data['year'] == current_year
+        
+        # Check specific months
+        january_data = next((m for m in monthly_data if m['month_name'] == 'Jan'), None)
+        assert january_data is not None
+        assert january_data['expenses'] == 200.0
+        
+        march_data = next((m for m in monthly_data if m['month_name'] == 'Mar'), None)
+        assert march_data is not None
+        assert march_data['expenses'] == 300.0
+        
+        # Check current month
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        current_month_name = month_names[now.month - 1]
+        current_month_data = next((m for m in monthly_data if m['month_name'] == current_month_name), None)
+        assert current_month_data is not None
+        assert current_month_data['expenses'] == 150.0
+        
+        # Check that February has 0.0 expenses
+        february_data = next((m for m in monthly_data if m['month_name'] == 'Feb'), None)
+        assert february_data is not None
+        assert february_data['expenses'] == 0.0

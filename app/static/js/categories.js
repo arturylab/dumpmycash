@@ -561,8 +561,8 @@ class CategoryManager {
         if (emptyDiv) emptyDiv.classList.add('d-none');
         canvas.style.display = 'none';
         
-        // Build API URL with filter parameters
-        let apiUrl = '/categories/api/categories/top-expenses?filter=' + filter;
+        // Build API URL with filter parameters - show all categories for pie chart
+        let apiUrl = '/categories/api/categories/top-expenses?filter=' + filter + '&show_all=true';
         if (filter === 'custom' && startDate && endDate) {
             apiUrl += `&start_date=${startDate}&end_date=${endDate}`;
         }
@@ -588,7 +588,21 @@ class CategoryManager {
                 if (loadingDiv) loadingDiv.style.display = 'none';
                 
                 if (data.success && data.has_data) {
-                    this.renderTopExpensesChart(canvas, data.chart_data);
+                    // Transform data to match home.js format
+                    const transformedData = {
+                        status: 'success',
+                        data: {
+                            categories: data.chart_data.labels.map((label, index) => ({
+                                name: label,
+                                amount: data.chart_data.data[index],
+                                percentage: ((data.chart_data.data[index] / data.chart_data.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1),
+                                formatted_amount: `$${data.chart_data.data[index].toFixed(2)}`,
+                                emoji: data.chart_data.emojis[index] || '💸'
+                            }))
+                        }
+                    };
+                    
+                    this.renderTopExpensesChart(canvas, transformedData);
                     canvas.style.display = 'block';
                 } else {
                     if (emptyDiv) emptyDiv.classList.remove('d-none');
@@ -602,9 +616,11 @@ class CategoryManager {
     }
 
     /**
-     * Render the top expenses chart as bubble chart without axes
+     * Render the top expenses chart as doughnut chart (same as home.js)
      */
-    renderTopExpensesChart(canvas, chartData) {
+    renderTopExpensesChart(canvas, data) {
+        if (data.status !== 'success' || !data.data.categories.length) return;
+        
         const ctx = canvas.getContext('2d');
         
         // Destroy existing chart if it exists
@@ -612,128 +628,81 @@ class CategoryManager {
             this.topExpensesChart.destroy();
         }
         
-        // Convert data to bubble format with improved positioning
-        const bubbleData = chartData.data.map((value, index) => {
-            // Create a more natural scattered pattern using spiral positioning
-            const angle = index * 0.618 * 2 * Math.PI; // Golden angle for natural distribution
-            const spiralRadius = 15 + Math.sqrt(index + 1) * 8; // Spiral outward
-            const x = 50 + spiralRadius * Math.cos(angle);
-            const y = 50 + spiralRadius * Math.sin(angle);
-            
-            // Bubble size based on amount with better scaling
-            const maxValue = Math.max(...chartData.data);
-            const minValue = Math.min(...chartData.data);
-            const valueRange = maxValue - minValue || 1; // Prevent division by zero
-            const normalizedValue = (value - minValue) / valueRange;
-            const bubbleSize = 8 + (normalizedValue * 25); // Better size range: 8-33
-            
-            return {
-                x: Math.max(10, Math.min(90, x)), // Keep bubbles within bounds
-                y: Math.max(10, Math.min(90, y)), // Keep bubbles within bounds
-                r: bubbleSize,
-                label: chartData.labels[index],
-                value: value,
-                emoji: chartData.emojis[index] || '💸'
-            };
-        });
-        
-        // Enhanced color palette for better visual appeal
-        const colorPalette = [
-            'rgba(255, 107, 107, 0.8)',  // Red
-            'rgba(78, 205, 196, 0.8)',   // Teal
-            'rgba(255, 159, 64, 0.8)',   // Orange
-            'rgba(54, 162, 235, 0.8)',   // Blue
-            'rgba(255, 206, 86, 0.8)',   // Yellow
-            'rgba(153, 102, 255, 0.8)',  // Purple
-            'rgba(75, 192, 192, 0.8)',   // Green
-            'rgba(255, 99, 132, 0.8)',   // Pink
-            'rgba(69, 183, 209, 0.8)',   // Sky Blue
-            'rgba(150, 206, 180, 0.8)'   // Mint
-        ];
-        
-        const borderColors = [
-            'rgba(255, 107, 107, 1)',
-            'rgba(78, 205, 196, 1)',
-            'rgba(255, 159, 64, 1)',
-            'rgba(54, 162, 235, 1)',
-            'rgba(255, 206, 86, 1)',
-            'rgba(153, 102, 255, 1)',
-            'rgba(75, 192, 192, 1)',
-            'rgba(255, 99, 132, 1)',
-            'rgba(69, 183, 209, 1)',
-            'rgba(150, 206, 180, 1)'
+        // Use same colors as home.js (extended to handle more categories)
+        const chartColors = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+            // Additional colors for more categories
+            '#FF9999', '#87CEEB', '#FFE135', '#5BC0C0',
+            '#AA77FF', '#FFA040', '#FF7777', '#D9DDDF'
         ];
         
         this.topExpensesChart = new Chart(ctx, {
-            type: 'bubble',
+            type: 'doughnut',
             data: {
+                labels: data.data.categories.map(cat => cat.name),
                 datasets: [{
-                    label: 'Expenses',
-                    data: bubbleData,
-                    backgroundColor: colorPalette.slice(0, chartData.data.length),
-                    borderColor: borderColors.slice(0, chartData.data.length),
-                    borderWidth: 2,
-                    hoverBorderWidth: 3
+                    data: data.data.categories.map(cat => cat.amount),
+                    backgroundColor: chartColors,
+                    borderWidth: 0
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        display: false,
-                        min: 0,
-                        max: 100
-                    },
-                    y: {
-                        display: false,
-                        min: 0,
-                        max: 100
-                    }
-                },
                 plugins: {
-                    legend: {
-                        display: true,
-                        position: 'bottom',
-                        labels: {
-                            generateLabels: function(chart) {
-                                const data = chart.data.datasets[0].data;
-                                return data.map((point, index) => ({
-                                    text: `${point.emoji} ${point.label}`,
-                                    fillStyle: chart.data.datasets[0].backgroundColor[index],
-                                    strokeStyle: chart.data.datasets[0].borderColor[index],
-                                    lineWidth: 2,
-                                    pointStyle: 'circle'
-                                }));
-                            },
-                            padding: 12,
-                            usePointStyle: true,
-                            font: {
-                                size: 11
-                            }
-                        }
-                    },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            title: function(context) {
-                                const point = context[0].raw;
-                                return `${point.emoji} ${point.label}`;
-                            },
                             label: function(context) {
-                                const point = context.raw;
-                                const total = chartData.data.reduce((a, b) => a + b, 0);
-                                const percentage = ((point.value / total) * 100).toFixed(1);
-                                return `Amount: $${point.value.toFixed(2)} (${percentage}%)`;
+                                const category = data.data.categories[context.dataIndex];
+                                return `${category.name}: ${category.formatted_amount} (${category.percentage}%)`;
                             }
                         }
                     }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'point'
                 }
             }
         });
+        
+        // Update the category list below the chart (same as home.js)
+        this.updateExpenseCategoryList(data.data.categories, chartColors);
+    }
+    
+    /**
+     * Update expense category list with percentages (shows ALL categories, not limited)
+     * @param {Array} categories - Category data array
+     * @param {Array} chartColors - Chart colors array
+     */
+    updateExpenseCategoryList(categories, chartColors) {
+        const listContainer = document.getElementById('expense-category-list');
+        if (!listContainer) return;
+        
+        // Show ALL categories (no limit like home.js)
+        const listHTML = categories.map((category, index) => `
+            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <div class="d-flex align-items-center">
+                    <div class="me-2" style="width: 12px; height: 12px; background-color: ${chartColors[index % chartColors.length]}; border-radius: 50%;"></div>
+                    <span class="small">${this.escapeHtml(category.name)}</span>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold small">${category.formatted_amount}</div>
+                    <div class="text-muted" style="font-size: 0.75rem;">${category.percentage}%</div>
+                </div>
+            </div>
+        `).join('');
+        
+        listContainer.innerHTML = listHTML;
+    }
+    
+    /**
+     * Escape HTML to prevent XSS (same as home.js)
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     /**

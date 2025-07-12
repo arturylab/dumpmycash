@@ -565,17 +565,18 @@ def api_category_stats():
 @category_bp.route('/api/categories/top-expenses', methods=['GET'])
 @api_login_required
 def api_top_expense_categories():
-    """API endpoint to get top expense categories with time filtering."""
+    """API endpoint to get expense categories with time filtering."""
     try:
         # Get filter parameters
         time_filter = request.args.get('filter', 'month')
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
+        show_all = request.args.get('show_all', 'false').lower() == 'true'
         
         # Get date range based on filter type
         start_date, end_date = get_date_range(time_filter, start_date_str, end_date_str)
         
-        # Base query for top expense categories
+        # Base query for expense categories
         query = db.session.query(
             Category.name,
             Category.unicode_emoji,
@@ -592,27 +593,33 @@ def api_top_expense_categories():
                 Transaction.date <= end_date
             )
         
-        # Get top expenses
-        top_expenses = query.group_by(Category.id).order_by(
+        # Get expenses - apply limit only if show_all is False
+        query = query.group_by(Category.id).order_by(
             func.sum(Transaction.amount).desc()
-        ).limit(TOP_CATEGORIES_LIMIT).all()
+        )
+        
+        if not show_all:
+            query = query.limit(TOP_CATEGORIES_LIMIT)
+            
+        expenses = query.all()
         
         # Format data for chart
         chart_data = {
-            'labels': [expense.name for expense in top_expenses],
-            'data': [float(expense.total) for expense in top_expenses],
-            'emojis': [expense.unicode_emoji or DEFAULT_EMOJI_EXPENSE for expense in top_expenses]
+            'labels': [expense.name for expense in expenses],
+            'data': [float(expense.total) for expense in expenses],
+            'emojis': [expense.unicode_emoji or DEFAULT_EMOJI_EXPENSE for expense in expenses]
         }
         
         return jsonify({
             'success': True,
             'chart_data': chart_data,
-            'has_data': len(top_expenses) > 0,
-            'filter': time_filter
+            'has_data': len(expenses) > 0,
+            'filter': time_filter,
+            'total_categories': len(expenses)
         })
         
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Error retrieving top expense categories: {str(e)}'
+            'error': f'Error retrieving expense categories: {str(e)}'
         }), 500
