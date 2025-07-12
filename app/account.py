@@ -6,7 +6,6 @@ Provides account CRUD operations, balance tracking, and transfer functionality.
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from app.models import db, Account, Transaction, Category, Transfer
 from app.auth import login_required
-from app.utils import format_currency
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
