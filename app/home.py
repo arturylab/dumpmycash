@@ -11,7 +11,6 @@ from sqlalchemy import func, and_
 
 from app.models import Transaction, Category, db
 from app.auth import login_required
-from app.utils import format_currency
 
 home = Blueprint('home', __name__, url_prefix='/home')
 
@@ -19,6 +18,12 @@ home = Blueprint('home', __name__, url_prefix='/home')
 TRANSFER_CATEGORY_NAME = 'Transfer'
 DEFAULT_STATS_DAYS = 30
 MAX_TRANSACTION_LIMIT = 50
+
+def format_currency(amount):
+    """Format a currency amount with proper formatting."""
+    if amount is None:
+        return "$0.00"
+    return f"${amount:,.2f}"
 
 def _get_transaction_filter(user_id, transaction_type, start_date=None, exclude_transfers=True):
     """
@@ -133,10 +138,12 @@ def api_stats():
         period_income, period_expenses, period_net = _calculate_totals(g.user.id, start_date)
         
         # Get transaction count for the period
-        transaction_count = db.session.query(func.count(Transaction.id)).filter(
-            Transaction.user_id == g.user.id,
-            Transaction.date >= start_date if start_date else True
-        ).scalar()
+        count_query = db.session.query(func.count(Transaction.id)).filter(
+            Transaction.user_id == g.user.id
+        )
+        if start_date:
+            count_query = count_query.filter(Transaction.date >= start_date)
+        transaction_count = count_query.scalar()
         
         return jsonify({
             'status': 'success',

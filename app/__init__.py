@@ -1,5 +1,5 @@
 # app/__init__.py
-from flask import Flask, g, redirect, url_for, session, render_template, Blueprint, request
+from flask import Flask, g, redirect, url_for, session, render_template, Blueprint, request, jsonify
 from flask_wtf.csrf import CSRFProtect
 from flask_migrate import Migrate
 from datetime import datetime
@@ -11,7 +11,6 @@ from app.categories import category_bp
 from app.transactions import transaction_bp
 from app.home import home as home_bp
 from app.profile import profile_bp
-from app.utils import format_currency
 
 # Create the blueprint first
 dashboard = Blueprint('dashboard', __name__)
@@ -36,7 +35,9 @@ def create_app(config_class=Config):
     @app.template_filter('currency')
     def format_currency_filter(amount):
         """Format currency with commas and two decimal places."""
-        return format_currency(amount)
+        if amount is None:
+            return "$0.00"
+        return f"${amount:,.2f}"
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard)
