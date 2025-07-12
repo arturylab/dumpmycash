@@ -596,7 +596,7 @@ class CategoryManager {
                                 name: label,
                                 amount: data.chart_data.data[index],
                                 percentage: ((data.chart_data.data[index] / data.chart_data.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1),
-                                formatted_amount: `$${data.chart_data.data[index].toFixed(2)}`,
+                                formatted_amount: this.formatCurrency(data.chart_data.data[index]),
                                 emoji: data.chart_data.emojis[index] || '💸'
                             }))
                         }
@@ -793,6 +793,21 @@ class CategoryManager {
             const feedback = field.parentNode.querySelector('.invalid-feedback');
             if (feedback) feedback.textContent = '';
         });
+    }
+
+    /**
+     * Format currency with commas and two decimal places
+     * @param {number} amount - Amount to format
+     * @returns {string} Formatted currency string
+     */
+    formatCurrency(amount) {
+        if (amount == null || isNaN(amount)) {
+            return "$0.00";
+        }
+        return `$${Number(amount).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        })}`;
     }
 
     /**

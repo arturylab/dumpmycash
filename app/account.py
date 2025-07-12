@@ -21,6 +21,13 @@ MAX_TRANSFERS_PER_PAGE = 100
 account_bp = Blueprint('account', __name__, url_prefix='/account')
 
 
+def format_currency(amount):
+    """Format currency with commas and two decimal places."""
+    if amount is None:
+        return "$0.00"
+    return f"${amount:,.2f}"
+
+
 @account_bp.route('/')
 @login_required
 def index():
@@ -684,3 +691,5 @@ def api_transfer_summary():
         'formatted_monthly_amount': format_currency(monthly_amount),
         'popular_pairs': popular_pairs
     })
+
+
