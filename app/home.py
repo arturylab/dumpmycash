@@ -510,3 +510,121 @@ def api_monthly_expenses():
         }), 500
 
 
+def get_date_range_for_filter(filter_type):
+    """
+    Get date range using the same logic as transactions and categories modules.
+    
+    Args:
+        filter_type (str): 'today' or 'week'
+        
+    Returns:
+        tuple: (start_date, end_date)
+    """
+    now = datetime.now()
+    
+    if filter_type == 'today':
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+    elif filter_type == 'week':
+        # Monday of this week
+        start_date = now - timedelta(days=now.weekday())
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
+    else:
+        raise ValueError(f"Unsupported filter type: {filter_type}")
+    
+    return start_date, end_date
+
+
+@home.route('/api/today-stats')
+@login_required
+def api_today_stats():
+    """API endpoint for today's statistics using same logic as transactions/categories."""
+    try:
+        start_date, end_date = get_date_range_for_filter('today')
+        
+        # Calculate today's income
+        today_income = db.session.query(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).filter(
+            _get_transaction_filter(g.user.id, 'income'),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        ).scalar()
+        
+        # Calculate today's expenses
+        today_expenses = db.session.query(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).filter(
+            _get_transaction_filter(g.user.id, 'expense'),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        ).scalar()
+        
+        today_net = float(today_income) - float(today_expenses)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'income': float(today_income),
+                'expenses': float(today_expenses),
+                'net': today_net,
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching today's stats: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch today statistics'
+        }), 500
+
+
+@home.route('/api/week-stats')
+@login_required
+def api_week_stats():
+    """API endpoint for this week's statistics using same logic as transactions/categories."""
+    try:
+        start_date, end_date = get_date_range_for_filter('week')
+        
+        # Calculate this week's income
+        week_income = db.session.query(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).filter(
+            _get_transaction_filter(g.user.id, 'income'),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        ).scalar()
+        
+        # Calculate this week's expenses
+        week_expenses = db.session.query(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).filter(
+            _get_transaction_filter(g.user.id, 'expense'),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date
+        ).scalar()
+        
+        week_net = float(week_income) - float(week_expenses)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'income': float(week_income),
+                'expenses': float(week_expenses),
+                'net': week_net,
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching week's stats: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch week statistics'
+        }), 500
+
+

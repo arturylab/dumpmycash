@@ -338,17 +338,95 @@ async function loadPeriodStats(days, elementId, breakdownId) {
 }
 
 /**
- * Load weekly statistics
+ * Load weekly statistics using same calculation as transactions/categories
  */
-function loadWeeklyStats() {
-    loadPeriodStats(7, 'weekly-balance', 'weekly-breakdown');
+async function loadWeeklyStats() {
+    try {
+        const response = await fetch('/home/api/week-stats');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const stats = data.data;
+            const formattedNet = formatCurrency(stats.net);
+            const formattedIncome = formatCurrency(stats.income);
+            const formattedExpenses = formatCurrency(stats.expenses);
+            
+            // Update balance text
+            updateElementText('weekly-balance', formattedNet);
+            
+            // Update color class based on positive/negative value
+            const weeklyContainer = document.getElementById('weekly-net-container');
+            if (weeklyContainer) {
+                weeklyContainer.className = stats.net >= 0 ? 'text-success' : 'text-danger';
+            }
+            
+            updateElementHTML('weekly-breakdown', 
+                `<span class="text-success">+${formattedIncome}</span> | 
+                 <span class="text-danger">-${formattedExpenses}</span>`);
+        }
+    } catch (error) {
+        console.error('Error loading weekly stats:', error);
+        updateElementText('weekly-balance', 'Error');
+        updateElementHTML('weekly-breakdown', 
+            '<span class="text-muted">Unable to load</span>');
+        
+        // Reset color class on error
+        const weeklyContainer = document.getElementById('weekly-net-container');
+        if (weeklyContainer) {
+            weeklyContainer.className = 'text-muted';
+        }
+    }
 }
 
 /**
- * Load daily statistics  
+ * Load daily statistics using same calculation as transactions/categories
  */
-function loadDailyStats() {
-    loadPeriodStats(1, 'daily-balance', 'daily-breakdown');
+async function loadDailyStats() {
+    try {
+        const response = await fetch('/home/api/today-stats');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const stats = data.data;
+            const formattedNet = formatCurrency(stats.net);
+            const formattedIncome = formatCurrency(stats.income);
+            const formattedExpenses = formatCurrency(stats.expenses);
+            
+            // Update balance text
+            updateElementText('daily-balance', formattedNet);
+            
+            // Update color class based on positive/negative value
+            const dailyContainer = document.getElementById('daily-net-container');
+            if (dailyContainer) {
+                dailyContainer.className = stats.net >= 0 ? 'text-success' : 'text-danger';
+            }
+            
+            updateElementHTML('daily-breakdown', 
+                `<span class="text-success">+${formattedIncome}</span> | 
+                 <span class="text-danger">-${formattedExpenses}</span>`);
+        }
+    } catch (error) {
+        console.error('Error loading daily stats:', error);
+        updateElementText('daily-balance', 'Error');
+        updateElementHTML('daily-breakdown', 
+            '<span class="text-muted">Unable to load</span>');
+        
+        // Reset color class on error
+        const dailyContainer = document.getElementById('daily-net-container');
+        if (dailyContainer) {
+            dailyContainer.className = 'text-muted';
+        }
+    }
 }
 
 /**
